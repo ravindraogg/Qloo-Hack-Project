@@ -23,7 +23,7 @@ const VibeCraftAuth = () => {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
-    setError(''); // Clear error on input change
+    setError(''); 
   };
 
   const handleSubmit = async (e) => {
@@ -49,9 +49,7 @@ const VibeCraftAuth = () => {
       const data = await response.json();
 
       if (response.ok) {
-        // Store JWT token in localStorage
         localStorage.setItem('token', data.token);
-        // Reset form
         setFormData({
           name: '',
           email: '',
@@ -59,7 +57,7 @@ const VibeCraftAuth = () => {
           confirmPassword: '',
           agreeTerms: false,
         });
-        navigate('/dashboard');
+        navigate('/home');
       } else {
         setError(data.message || 'An error occurred');
       }
