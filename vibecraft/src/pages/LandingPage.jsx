@@ -416,10 +416,12 @@ const LandingPage = () => {
                   <div className="mt-8 animate-slide-in-up">
                     <VibeCard vibe={generatedVibe} />
                     <div className="mt-8 flex flex-col sm:flex-row justify-between items-center gap-4">
+                      <Link to ="/auth">
                       <button className="bg-gradient-to-r from-pink-500 to-violet-500 px-8 py-4 rounded-full font-semibold hover:scale-105 transition-transform shadow-lg flex items-center space-x-2">
                         <Star className="w-5 h-5" />
                         <span>Save & Create Account</span>
                       </button>
+                      </Link>
                       <div className="flex items-center space-x-4">
                         <button className="text-gray-400 hover:text-white transition-colors flex items-center space-x-2">
                           <MessageCircle className="w-5 h-5" />
@@ -834,8 +836,8 @@ const LandingPage = () => {
           
           <div className="pt-8 border-t border-white/10 text-center">
             <p className="text-gray-400 text-lg">
-              © {new Date().getFullYear()} VibeCraft. Crafted with ❤️ by{" "}
-              <span className="text-pink-400 font-semibold">Ravindra Boss</span>.{" "}
+              © {new Date().getFullYear()} VibeCraft. Crafted by{" "}
+              <span className="text-pink-400 font-semibold">Ravindra</span>.{" "}
               Powered by <span className="text-violet-400 font-semibold">Qloo Taste AI</span> & 
               <span className="text-blue-400 font-semibold"> Google Gemini</span>.
             </p>

@@ -57,7 +57,7 @@ const VibeCraftAuth = () => {
           confirmPassword: '',
           agreeTerms: false,
         });
-        navigate('/home');
+        navigate('/dashboard');
       } else {
         setError(data.message || 'An error occurred');
       }

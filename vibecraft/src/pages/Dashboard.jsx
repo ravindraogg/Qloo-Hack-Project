@@ -3,6 +3,49 @@ import {
   Sparkles, Music, HelpCircle, MapPin, Palette, Coffee, Home, ShoppingBag, Volume2, VolumeX, Mic, MicOff, Share2, User, Settings, LogOut, Send, Eye, Heart, Star, Play, Pause, RefreshCw, Image, FileText, Loader2, X, ChevronRight, ZapOff, Calendar, Clock, Bookmark, Grid, List, Filter, Search, Save, Plus, ArrowRight, Headphones, Camera, Utensils, Shirt, Plane, Sofa, Wand2, Globe, Target, Zap, AlertCircle, CheckCircle, Info, Smile, ThumbsUp, ChevronLeft
 } from 'lucide-react';
 import debounce from 'lodash.debounce';
+import DOMPurify from 'dompurify';
+
+
+// --- Global Helper Functions & Components ---
+
+const sanitizeInput = (input) => {
+    if (!input || typeof input !== 'string') return '';
+    return DOMPurify.sanitize(input.trim(), {
+      ALLOWED_TAGS: [],
+      ALLOWED_ATTR: [],
+    });
+};
+
+const validateImageUrl = (url) => {
+    try {
+      const parsed = new URL(url);
+      const pathname = parsed.pathname;
+      const isImagePath = /\.(jpeg|jpg|png|gif)$/i.test(pathname);
+      const isUnsplash = parsed.hostname.includes("unsplash.com");
+      return isImagePath || isUnsplash;
+    } catch {
+      return false;
+    }
+};
+
+const getThemeBrightness = (colors) => {
+    if (!colors || !Array.isArray(colors) || colors.length === 0) return 'dark';
+    try {
+      const avgLuminance = colors.reduce((sum, color) => {
+        const cleanColor = color.replace(/`/g, '').trim();
+        const hex = cleanColor.replace('#', '');
+        const rgb = parseInt(hex, 16);
+        const r = (rgb >> 16) & 0xff;
+        const g = (rgb >> 8) & 0xff;
+        const b = (rgb >> 0) & 0xff;
+        const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        return sum + luminance;
+      }, 0) / colors.length;
+      return avgLuminance > 140 ? 'light' : 'dark';
+    } catch (e) {
+      return 'dark';
+    }
+};
 
 const ErrorBoundary = ({ children }) => {
   const [hasError, setHasError] = useState(false);
@@ -40,6 +83,312 @@ const ErrorBoundary = ({ children }) => {
   return children;
 };
 
+const SpotifyPlayer = React.memo(({ trackId, trackName }) => {
+    if (!trackId) {
+      return <div className="w-full h-20 bg-gray-800/50 rounded-lg flex items-center justify-center text-gray-400 text-sm">No track available</div>;
+    }
+  
+    const sanitizedId = sanitizeInput(trackId);
+    const sanitizedName = sanitizeInput(trackName);
+  
+    return (
+        <iframe
+        src={`https://open.spotify.com/embed/track/${sanitizedId}?utm_source=generator&theme=0`}
+        width="100%"
+        height="80"
+        frameBorder="0"
+        allow="clipboard-write; encrypted-media; fullscreen; picture-in-picture"
+        loading="lazy"
+        className="flex-shrink-0 w-full rounded-lg"
+        title={sanitizedName}
+        />
+    );
+});
+SpotifyPlayer.displayName = 'SpotifyPlayer';
+
+const VibeCard = React.memo(
+    React.forwardRef(({
+        vibe,
+        complementaryColors,
+        overallThemeBrightness,
+        defaultImage,
+        currentPlayingAudio,
+        onSaveVibe,
+        onGenerateShareLink,
+        onPlayTTS,
+        onStopTTS
+    }, ref) => {
+      const [currentSlide, setCurrentSlide] = useState(0);
+      const [isAutoScroll, setIsAutoScroll] = useState(true);
+      const [isContentReady, setIsContentReady] = useState(false);
+      
+      const validImageUrls = useMemo(() => {
+        return (vibe?.imageUrls || []).map(url => validateImageUrl(url) ? url : defaultImage);
+      }, [vibe?.imageUrls, defaultImage]);
+
+      const cardThemeBrightness = useMemo(() => getThemeBrightness(vibe?.colors || []), [vibe?.colors]);
+
+      useEffect(() => {
+        if (vibe?.id) {
+          const timer = setTimeout(() => setIsContentReady(true), 200);
+          return () => clearTimeout(timer);
+        }
+      }, [vibe?.id]);
+
+      useEffect(() => {
+        let interval;
+        if (isAutoScroll && validImageUrls.length > 1 && isContentReady) {
+          interval = setInterval(() => {
+            setCurrentSlide(prev => (prev + 1) % validImageUrls.length);
+          }, 5000);
+        }
+        return () => clearInterval(interval);
+      }, [isAutoScroll, validImageUrls.length, isContentReady]);
+
+      const handleInteractiveClick = useCallback((e, action) => {
+        e.preventDefault();
+        e.stopPropagation();
+        action();
+      }, []);
+
+      const nextSlide = useCallback(() => setCurrentSlide(prev => (prev + 1) % validImageUrls.length), [validImageUrls.length]);
+      const prevSlide = useCallback(() => setCurrentSlide(prev => (prev - 1 + validImageUrls.length) % validImageUrls.length), [validImageUrls.length]);
+
+      const IconMap = { Music, Utensils, Shirt, MapPin, Sofa };
+      const titleColorClass = cardThemeBrightness === 'dark' ? 'text-white' : 'text-black';
+      const textColorClass = cardThemeBrightness === 'dark' ? 'text-gray-300' : 'text-gray-700';
+      const mutedTextColorClass = cardThemeBrightness === 'dark' ? 'text-gray-400' : 'text-gray-600';
+      const semiBoldTextColorClass = cardThemeBrightness === 'dark' ? 'text-gray-200' : 'text-gray-800';
+
+      const handleImageError = useCallback(
+        (e) => {
+          if (e.target.src !== defaultImage) e.target.src = defaultImage;
+          e.target.onerror = null;
+        },
+        [defaultImage]
+      );
+
+      return (
+        <div
+          ref={ref}
+          className={`bg-black/30 backdrop-blur-lg border rounded-2xl overflow-hidden shadow-2xl hover:-translate-y-1 transition-all duration-300 w-full min-h-[480px] flex flex-col ${overallThemeBrightness === 'dark' ? 'border-white/10' : 'border-black/10'}`}
+          style={{ '--primary-color': complementaryColors.primary, '--secondary-color': complementaryColors.secondary }}
+        >
+          <style>
+            {`
+              @keyframes kenburns { 0% { transform: scale(1) translate(0, 0); } 100% { transform: scale(1.15) translate(-2%, 2%); } }
+              .ken-burns-animation { animation: kenburns 10s ease-out forwards; }
+            `}
+          </style>
+          <div className={`absolute inset-0 bg-gray-800/20 z-10 transition-opacity duration-500 ${isContentReady ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+            <div className="w-full h-full flex items-center justify-center">
+              <Loader2 className="w-8 h-8 animate-spin" style={{ color: complementaryColors.primary }} />
+            </div>
+          </div>
+          <div className="relative w-full h-48 overflow-hidden group">
+            {validImageUrls.length > 0 && (
+              <div className="absolute inset-0 flex">
+                {validImageUrls.map((url, index) => (
+                  <div
+                    key={`${vibe.id}-img-container-${index}`}
+                    className="w-full h-full absolute top-0 left-0 transition-opacity duration-1000 ease-in-out flex-shrink-0"
+                    style={{ opacity: currentSlide === index ? 1 : 0 }}
+                  >
+                    <img
+                      src={url}
+                      alt={`${sanitizeInput(vibe.title)} ${index + 1}`}
+                      className={`w-full h-full object-cover ${currentSlide === index ? 'ken-burns-animation' : ''}`}
+                      onError={handleImageError}
+                      crossOrigin="anonymous"
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+            {validImageUrls.length > 1 && (
+              <>
+                <button
+                  onClick={(e) => handleInteractiveClick(e, prevSlide)}
+                  className="absolute top-1/2 left-2 -translate-y-1/2 z-20 p-2 bg-black/40 rounded-full text-white hover:bg-black/60 transition-all opacity-0 group-hover:opacity-100"
+                  title="Previous"
+                >
+                  <ChevronLeft className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={(e) => handleInteractiveClick(e, nextSlide)}
+                  className="absolute top-1/2 right-2 -translate-y-1/2 z-20 p-2 bg-black/40 rounded-full text-white hover:bg-black/60 transition-all opacity-0 group-hover:opacity-100"
+                  title="Next"
+                >
+                  <ChevronRight className="w-5 h-5" />
+                </button>
+                <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex space-x-2 z-10">
+                  {validImageUrls.map((_, index) => (
+                    <button
+                      key={index}
+                      onClick={(e) => handleInteractiveClick(e, () => setCurrentSlide(index))}
+                      className={`w-2 h-2 rounded-full transition-all ${currentSlide === index ? 'bg-white scale-125' : 'bg-gray-400'}`}
+                    />
+                  ))}
+                </div>
+                <div className="absolute top-2 right-2 z-10">
+                  <button
+                    onClick={(e) => handleInteractiveClick(e, () => setIsAutoScroll(!isAutoScroll))}
+                    className="p-2 bg-black/50 rounded-full text-white hover:bg-black/70"
+                    title={isAutoScroll ? 'Pause Auto-Scroll' : 'Start Auto-Scroll'}
+                  >
+                    {isAutoScroll ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <div className="p-6 flex-1 flex flex-col">
+            {vibe.spotifyTracks && vibe.spotifyTracks.length > 0 && (
+              <div className="mb-4">
+                <h4 className={`text-sm font-semibold ${semiBoldTextColorClass} mb-2`}>Spotify Playlist</h4>
+                 <SpotifyPlayer 
+                    trackId={vibe.spotifyTracks[0].id} 
+                    trackName={vibe.spotifyTracks[0].name} 
+                  />
+              </div>
+            )}
+            <div className="flex justify-between items-start mb-2">
+              <div>
+                <h3 className={`text-xl font-bold ${titleColorClass}`}>{vibe?.title || 'Untitled Vibe'}</h3>
+                <p className={`text-xs ${mutedTextColorClass}`}>{vibe?.timestamp || 'N/A'}</p>
+              </div>
+              <div className="flex space-x-2">
+                {!vibe?.isSaved && vibe?.chatId && (
+                  <button
+                    onClick={(e) => handleInteractiveClick(e, () => onSaveVibe(vibe.chatId))}
+                    className="p-2 bg-white/10 rounded-full hover:bg-white/20 text-white"
+                    title="Save"
+                  >
+                    <Save className="w-4 h-4" />
+                  </button>
+                )}
+                {vibe?.isSaved && vibe?.chatId && (
+                  <button
+                    onClick={(e) => handleInteractiveClick(e, () => onGenerateShareLink(vibe.chatId))}
+                    className="p-2 bg-white/10 rounded-full hover:bg-white/20 text-white"
+                    title="Share Link"
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </button>
+                )}
+                {vibe?.chatId && (
+                  <button
+                    onClick={(e) => handleInteractiveClick(e, () => (currentPlayingAudio === vibe.chatId ? onStopTTS() : onPlayTTS(vibe.chatId)))}
+                    className="p-2 bg-white/10 rounded-full hover:bg-white/20 text-white"
+                    title={currentPlayingAudio === vibe.chatId ? 'Stop TTS' : 'Play TTS'}
+                  >
+                    {currentPlayingAudio === vibe.chatId ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                  </button>
+                )}
+              </div>
+            </div>
+            <p className={`mb-4 text-sm ${textColorClass}`}>{vibe?.description || 'No description available.'}</p>
+            <div className="space-y-3 mt-auto">
+              <div className="flex items-center space-x-2">
+                <Palette className="w-4 h-4" style={{ color: complementaryColors.primary }} />
+                <div className="flex flex-wrap gap-2">
+                  {(vibe?.colors || []).map(color => (
+                    <div key={color} className="w-5 h-5 rounded-full border border-white/20" style={{ backgroundColor: color }} title={color} />
+                  ))}
+                </div>
+              </div>
+              {[
+                { icon: vibe?.icons?.music || 'Music', label: 'Music', items: vibe?.music || [] },
+                { icon: vibe?.icons?.food || 'Utensils', label: 'Food', items: vibe?.food || [] },
+                { icon: vibe?.icons?.fashion || 'Shirt', label: 'Fashion', items: vibe?.fashion || [] },
+                { icon: vibe?.icons?.travel || 'MapPin', label: 'Travel', items: vibe?.travel || [] },
+                { icon: vibe?.icons?.decor || 'Sofa', label: 'Decor', items: vibe?.decor || [] },
+              ].map(({ icon, label, items }) => {
+                const Icon = IconMap[icon] || Palette;
+                return (
+                  items.length > 0 && (
+                    <div key={label} className="flex items-start space-x-2">
+                      <Icon className="w-4 h-4 mt-1" style={{ color: complementaryColors.primary }} />
+                      <div>
+                        <span className={`text-sm font-semibold ${semiBoldTextColorClass}`}>{label}:</span>
+                        <span className={`text-sm ${textColorClass}`}> {items.join(', ')}</span>
+                      </div>
+                    </div>
+                  )
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    })
+);
+VibeCard.displayName = 'VibeCard';
+
+const LazyVibeCard = React.memo((props) => {
+    const cardRef = useRef(null);
+    const [isVisible, setIsVisible] = useState(false);
+    const [isLoaded, setIsLoaded] = useState(false);
+    useEffect(() => {
+      const observer = new IntersectionObserver(
+        ([entry]) => {
+          if (entry.isIntersecting && !isVisible) {
+            setIsVisible(true);
+            const timer = setTimeout(() => setIsLoaded(true), 100);
+            return () => clearTimeout(timer);
+          }
+        },
+        {
+          threshold: 0.1,
+          rootMargin: '50px',
+        }
+      );
+      const currentRef = cardRef.current;
+      if (currentRef) {
+        observer.observe(currentRef);
+      }
+      return () => {
+        if (currentRef) {
+          observer.unobserve(currentRef);
+        }
+      };
+    }, [isVisible]);
+
+    const memoizedVibe = useMemo(() => props.vibe, [props.vibe.id, props.vibe.title, props.vibe.colors, props.vibe.imageUrls]);
+
+    return (
+      <div ref={cardRef} className="w-full">
+        {isVisible && isLoaded ? (
+          <VibeCard {...props} vibe={memoizedVibe} ref={cardRef} />
+        ) : (
+          <div className="h-[480px] w-full bg-gray-800/20 rounded-2xl animate-pulse flex flex-col">
+            <div className="h-48 bg-gray-700/30 rounded-t-2xl" />
+            <div className="p-6 flex-1 flex flex-col gap-4">
+              <div className="h-6 bg-gray-700/30 rounded w-3/4" />
+              <div className="h-4 bg-gray-700/30 rounded w-1/2" />
+              <div className="h-20 bg-gray-700/30 rounded" />
+              <div className="h-4 bg-gray-700/30 rounded w-full" />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+});
+LazyVibeCard.displayName = 'LazyVibeCard';
+
+const NotificationIcon = ({ type }) => {
+    const iconProps = { className: 'w-5 h-5' };
+    switch (type) {
+      case 'success':
+        return <CheckCircle {...iconProps} />;
+      case 'error':
+        return <AlertCircle {...iconProps} />;
+      default:
+        return <Info {...iconProps} />;
+    }
+};
+
+
 const Dashboard = () => {
   const [isVoiceMode, setIsVoiceMode] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -68,8 +417,8 @@ const Dashboard = () => {
   const [dynamicColors, setDynamicColors] = useState(['#1A202C', '#4A3065', '#1A365D']);
   const [backgroundGradient, setBackgroundGradient] = useState('linear-gradient(to bottom right, #4A3065, #1A365D)');
   const [showGreeting, setShowGreeting] = useState(true);
-  const [currentSpotifyTrackIndex, setCurrentSpotifyTrackIndex] = useState(0);
   const [sharedVibe, setSharedVibe] = useState(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
 
   const recognitionRef = useRef(null);
   const speechSynthesisRef = useRef(null);
@@ -77,8 +426,7 @@ const Dashboard = () => {
   const textareaRef = useRef(null);
   const profileRef = useRef(null);
   const generatedVibeCardRef = useRef(null);
-  const spotifyPlayerRefs = useRef([]);
-
+  
   const categories = [
     { id: 'music', name: 'Music', icon: Music, color: 'from-purple-500 to-pink-500' },
     { id: 'travel', name: 'Travel', icon: MapPin, color: 'from-blue-500 to-cyan-500' },
@@ -98,39 +446,49 @@ const Dashboard = () => {
   ];
 
   const defaultImage = "https://images.unsplash.com/photo-1511920183276-5942f28b870d?w=800&h=600&fit=crop";
-
-  const sanitizeInput = (input) => (input && typeof input === 'string' ? input.trim().replace(/[<>]/g, '') : '');
+  
   const validateHexColor = (color) => /^#[0-9A-Fa-f]{6}$/.test(color);
-  const validateImageUrl = (url) => {
-      try {
-          const parsed = new URL(url);
-          const pathname = parsed.pathname;
-          const isImagePath = /\.(jpeg|jpg|png|gif)$/i.test(pathname);
-          const isUnsplash = parsed.hostname.includes("unsplash.com");
-          return isImagePath || isUnsplash;
-      } catch {
-          return false;
-      }
+  
+  const sanitizeVibeData = (vibe) => {
+    if (!vibe || typeof vibe !== 'object') return null;
+    const sanitizedVibe = {
+      id: vibe.chatId || vibe.id || '',
+      chatId: vibe.chatId || vibe.id || '',
+      timestamp: new Date(vibe.createdAt || Date.now()).toLocaleString(),
+      isSaved: vibe.isSaved === true,
+      title: sanitizeInput(vibe.title) || 'Shared Vibe',
+      mood: sanitizeInput(vibe.mood) || 'Personalized',
+      description: sanitizeInput(vibe.description) || 'A shared lifestyle experience.',
+      categories: Array.isArray(vibe.categories) ? vibe.categories.map(sanitizeInput).filter(c => c) : ['mood'],
+      colors: Array.isArray(vibe.colors) && vibe.colors.length >= 3
+        ? vibe.colors.slice(0, 3).map(color => validateHexColor(color) ? color : '#FFFFFF')
+        : ['#FF6B6B', '#4ECDC4', '#45B7D1'],
+      music: Array.isArray(vibe.music) ? vibe.music.map(sanitizeInput).filter(m => m) : [],
+      food: Array.isArray(vibe.food) ? vibe.food.map(sanitizeInput).filter(f => f) : [],
+      fashion: Array.isArray(vibe.fashion) ? vibe.fashion.map(sanitizeInput).filter(f => f) : [],
+      travel: Array.isArray(vibe.travel) ? vibe.travel.map(sanitizeInput).filter(t => t) : [],
+      decor: Array.isArray(vibe.decor) ? vibe.decor.map(sanitizeInput).filter(d => d) : [],
+      imageUrls: Array.isArray(vibe.imageUrls) && vibe.imageUrls.length > 0
+        ? vibe.imageUrls.map(url => validateImageUrl(url) ? url : defaultImage)
+        : [defaultImage],
+      spotifyTracks: Array.isArray(vibe.spotifyTracks)
+        ? vibe.spotifyTracks.map(track => ({
+            id: sanitizeInput(track.id) || '',
+            name: sanitizeInput(track.name) || 'Unknown Track',
+            artist: sanitizeInput(track.artist) || 'Unknown Artist',
+            preview_url: validateImageUrl(track.preview_url) ? track.preview_url : null,
+          }))
+        : [],
+      icons: {
+        music: sanitizeInput(vibe.icons?.music) || 'Music',
+        food: sanitizeInput(vibe.icons?.food) || 'Utensils',
+        fashion: sanitizeInput(vibe.icons?.fashion) || 'Shirt',
+        travel: sanitizeInput(vibe.icons?.travel) || 'MapPin',
+        decor: sanitizeInput(vibe.icons?.decor) || 'Sofa',
+      },
+    };
+    return sanitizedVibe;
   };
-
-  const getThemeBrightness = useCallback((colors) => {
-    if (!colors || !Array.isArray(colors) || colors.length === 0) return 'dark';
-    try {
-      const avgLuminance = colors.reduce((sum, color) => {
-        const cleanColor = color.replace(/`/g, '').trim();
-        const hex = cleanColor.replace('#', '');
-        const rgb = parseInt(hex, 16);
-        const r = (rgb >> 16) & 0xff;
-        const g = (rgb >> 8) & 0xff;
-        const b = (rgb >> 0) & 0xff;
-        const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        return sum + luminance;
-      }, 0) / colors.length;
-      return avgLuminance > 140 ? 'light' : 'dark';
-    } catch (e) {
-      return 'dark';
-    }
-  }, []);
 
   const getComplementaryColors = useCallback((colors) => {
     if (!colors || !Array.isArray(colors)) return {};
@@ -139,7 +497,7 @@ const Dashboard = () => {
     return {
       primary: primaryColor,
       secondary: secondaryColor,
-      accent: colors[2]?.replace(/`/g, '').trim() || '#10B981'
+      accent: colors[2]?.replace(/`/g, '').trim() || '#10B981',
     };
   }, []);
 
@@ -148,7 +506,7 @@ const Dashboard = () => {
       'Nostalgic and Upbeat': 'energetic',
       'happy': ['joy', 'fun', 'bright', 'excited'],
       'calm': ['relax', 'peace', 'cozy', 'quiet'],
-      'energetic': ['active', 'adventure', 'dynamic', 'bold', 'upbeat']
+      'energetic': ['active', 'adventure', 'dynamic', 'bold', 'upbeat'],
     };
     const lowerMood = vibe.mood.toLowerCase();
     return moodMap[lowerMood] || Object.entries(moodMap).find(([_, keywords]) => Array.isArray(keywords) && keywords.some(k => lowerMood.includes(k)))?.[0] || 'neutral';
@@ -180,7 +538,9 @@ const Dashboard = () => {
     try {
       speechSynthesisRef.current.cancel();
       const utterance = new SpeechSynthesisUtterance(sanitizeInput(text));
-      utterance.rate = 0.8; utterance.pitch = 1; utterance.volume = 0.8;
+      utterance.rate = 0.8;
+      utterance.pitch = 1;
+      utterance.volume = 0.8;
       speechSynthesisRef.current.speak(utterance);
     } catch (error) {
       console.error('Speech synthesis error:', error);
@@ -214,7 +574,7 @@ const Dashboard = () => {
     try {
       const response = await fetch('http://localhost:5000/api/chats', {
         headers: { 'Authorization': `Bearer ${token}` },
-        signal: AbortSignal.timeout(10000)
+        signal: AbortSignal.timeout(10000),
       });
       if (!response.ok) {
         throw new Error(`Failed to fetch saved vibes: ${response.statusText}`);
@@ -227,34 +587,14 @@ const Dashboard = () => {
         .filter(chat => chat.vibe?.isSaved)
         .map(chat => {
           const vibe = chat.vibe || {};
-          return {
+          return sanitizeVibeData({
             ...vibe,
             chatId: chat._id || chat.chatId,
             id: chat._id || chat.chatId,
-            timestamp: new Date(chat.createdAt).toLocaleString(),
-            isSaved: chat.vibe.isSaved || false,
-            title: sanitizeInput(vibe.title) || `Untitled Vibe ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
-            mood: sanitizeInput(vibe.mood) || "Personalized",
-            description: sanitizeInput(vibe.description) || `A personalized lifestyle experience.`,
-            categories: vibe.categories || ['mood'],
-            colors: Array.isArray(vibe.colors) && vibe.colors.length >= 3 ? vibe.colors.slice(0, 3).map(color => validateHexColor(color) ? color : '#FFFFFF') : ['#FF6B6B', '#4ECDC4', '#45B7D1'],
-            music: Array.isArray(vibe.music) ? vibe.music : [],
-            food: Array.isArray(vibe.food) ? vibe.food : [],
-            fashion: Array.isArray(vibe.fashion) ? vibe.fashion : [],
-            travel: Array.isArray(vibe.travel) ? vibe.travel : [],
-            decor: Array.isArray(vibe.decor) ? vibe.decor : [],
-            imageUrls: Array.isArray(vibe.imageUrls) && vibe.imageUrls.length > 0 ? vibe.imageUrls.map(url => validateImageUrl(url) ? url : defaultImage) : [defaultImage],
-            spotifyTracks: Array.isArray(vibe.spotifyTracks) ? vibe.spotifyTracks : [],
-            icons: {
-              music: vibe.icons?.music || 'Music',
-              food: vibe.icons?.food || 'Utensils',
-              fashion: vibe.icons?.fashion || 'Shirt',
-              travel: vibe.icons?.travel || 'MapPin',
-              decor: vibe.icons?.decor || 'Sofa'
-            }
-          };
+            createdAt: chat.createdAt,
+          });
         })
-        .filter(vibe => vibe.chatId);
+        .filter(vibe => vibe && vibe.chatId);
 
       setSavedVibes(formattedVibes);
 
@@ -264,7 +604,7 @@ const Dashboard = () => {
       addNotification(`Failed to load saved vibes: ${error.message}`, 'error');
       setSavedVibes([]);
     }
-  }, [addNotification, defaultImage]);
+  }, [addNotification]);
 
   const loadRecentActivity = useCallback(async () => {
     const token = localStorage.getItem('token');
@@ -275,9 +615,9 @@ const Dashboard = () => {
       const activities = await response.json();
       setRecentActivity(activities.map(activity => ({
         type: 'generated',
-        title: `Created "${activity.vibe.title}"`,
+        title: sanitizeInput(`Created "${activity.vibe.title}"`),
         time: new Date(activity.createdAt).toLocaleString(),
-        chatId: activity._id
+        chatId: activity._id,
       })));
     } catch (error) {
       console.error('Error loading activity:', error);
@@ -293,14 +633,16 @@ const Dashboard = () => {
     textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
   }, []);
 
-  const handleInputChange = useCallback((e) => {
+  const handleInputChange = useCallback(
+    (e) => {
       const value = e.target.value;
-      debouncedSetInputText(value);
+      debouncedSetInputText(sanitizeInput(value));
       handleTextareaResize(e);
-  }, [debouncedSetInputText, handleTextareaResize]);
+    },
+    [debouncedSetInputText, handleTextareaResize]
+  );
 
-
-  const debouncedSetSearchQuery = useCallback(debounce((value) => setSearchQuery(value), 300), []);
+  const debouncedSetSearchQuery = useCallback(debounce((value) => setSearchQuery(sanitizeInput(value)), 300), []);
 
   const handleGenerate = useCallback(async () => {
     const sanitizedInput = sanitizeInput(inputText);
@@ -338,10 +680,10 @@ const Dashboard = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ input: sanitizedInput }),
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
@@ -356,68 +698,37 @@ const Dashboard = () => {
         throw new Error('Invalid or empty response from server');
       }
 
-      const newVibeCategories = [];
-      ['music', 'food', 'fashion', 'travel', 'decor'].forEach(cat => {
-        if (data[cat]?.length > 0) newVibeCategories.push(cat);
-      });
-      if (newVibeCategories.length === 0) newVibeCategories.push('mood');
+      const sanitizedVibe = sanitizeVibeData(data);
+      if (!sanitizedVibe) {
+        throw new Error('Invalid vibe data received');
+      }
 
-      const vibeColors = Array.isArray(data.colors) && data.colors.length >= 3
-        ? data.colors.slice(0, 3).map(color => validateHexColor(color) ? color : '#FFFFFF')
-        : ['#FF6B6B', '#4ECDC4', '#45B7D1'];
-
-      const newVibe = {
-        id: data.chatId,
-        chatId: data.chatId,
-        timestamp: new Date().toLocaleString(),
-        title: sanitizeInput(data.title) || `Generated Vibe ${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`,
-        mood: sanitizeInput(data.mood) || 'Personalized',
-        description: sanitizeInput(data.description) || 'A personalized lifestyle experience.',
-        categories: newVibeCategories,
-        colors: vibeColors,
-        music: Array.isArray(data.music) ? data.music : [],
-        food: Array.isArray(data.food) ? data.food : [],
-        fashion: Array.isArray(data.fashion) ? data.fashion : [],
-        travel: Array.isArray(data.travel) ? data.travel : [],
-        decor: Array.isArray(data.decor) ? data.decor : [],
-        imageUrls: Array.isArray(data.imageUrls) && data.imageUrls.length > 0
-          ? data.imageUrls.map(url => validateImageUrl(url) ? url : defaultImage)
-          : [defaultImage, defaultImage, defaultImage],
-        spotifyTracks: Array.isArray(data.spotifyTracks) ? data.spotifyTracks : [],
-        icons: data.icons || {
-          music: 'Music',
-          food: 'Utensils',
-          fashion: 'Shirt',
-          travel: 'MapPin',
-          decor: 'Sofa'
-        },
-        isSaved: data.isSaved || false
-      };
-
-      setGeneratedContent(newVibe);
+      setGeneratedContent(sanitizedVibe);
       setConversation(prev => [...prev, { role: 'assistant', content: `Welcome, ${userProfile.name}! Vibe generated.` }]);
-      const mood = getMoodFromVibe(newVibe);
+      const mood = getMoodFromVibe(sanitizedVibe);
       setUiTheme(mood);
-      setDynamicColors(vibeColors);
-      const newBackgroundGradient = `linear-gradient(to bottom right, ${vibeColors[1]}, ${vibeColors[2]})`;
+      setDynamicColors(sanitizedVibe.colors);
+      const newBackgroundGradient = `linear-gradient(to bottom right, ${sanitizedVibe.colors[1]}, ${sanitizedVibe.colors[2]})`;
       setBackgroundGradient(newBackgroundGradient);
-      speakText(`Welcome, ${userProfile.name}! Generated a ${mood} vibe called ${newVibe.title}.`);
-      setRecentActivity(prev => [{ type: 'generated', title: `Created "${newVibe.title}"`, time: 'Just now', chatId: data.chatId }, ...prev.slice(0, 4)]);
+      speakText(`Welcome, ${userProfile.name}! Generated a ${mood} vibe called ${sanitizedVibe.title}.`);
+      setRecentActivity(prev => [
+        { type: 'generated', title: `Created "${sanitizedVibe.title}"`, time: 'Just now', chatId: data.chatId },
+        ...prev.slice(0, 4),
+      ]);
       setInputText('');
       setVoiceTranscript('');
       addNotification('Vibe generated', 'success');
       speakText('Vibe generated successfully.');
-      setCurrentSpotifyTrackIndex(0);
-
     } catch (error) {
       console.error('Generation error:', error);
-      const errorMessage = error.name === 'AbortError'
-        ? 'Request timed out. Please check your internet connection and try again.'
-        : error.name === 'TypeError'
-        ? 'Failed to connect to the server. Ensure the backend is running.'
-        : error.message.includes('token')
-        ? 'Authentication failed. Please log in again.'
-        : 'Failed to generate vibe. Try again later.';
+      const errorMessage =
+        error.name === 'AbortError'
+          ? 'Request timed out. Please check your internet connection and try again.'
+          : error.name === 'TypeError'
+          ? 'Failed to connect to the server. Ensure the backend is running.'
+          : error.message.includes('token')
+          ? 'Authentication failed. Please log in again.'
+          : 'Failed to generate vibe. Try again later.';
       addNotification(errorMessage, 'error');
       speakText(errorMessage);
       setConversation(prev => [...prev, { role: 'error', content: errorMessage }]);
@@ -425,72 +736,81 @@ const Dashboard = () => {
     } finally {
       setIsGenerating(false);
     }
-  }, [inputText, isOnline, addNotification, speakText, userProfile.name, handleLogout, defaultImage, getMoodFromVibe]);
+  }, [inputText, isOnline, addNotification, speakText, userProfile.name, handleLogout, getMoodFromVibe]);
 
-  const saveVibe = useCallback(async (chatId) => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      addNotification('Please log in', 'error');
-      speakText('Please log in to save.');
-      handleLogout();
-      return;
-    }
-    try {
-      const response = await fetch(`http://localhost:5000/api/vibe/save/${chatId}`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await response.json();
-      if (response.ok) {
-        setSavedVibes(prev => {
-          const vibe = prev.find(v => v.chatId === chatId) || generatedContent;
-          if (!vibe) return prev;
-          const updatedVibe = { ...vibe, isSaved: true };
-          return [updatedVibe, ...prev.filter(v => v.chatId !== chatId)];
+  const saveVibe = useCallback(
+    async (chatId) => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        addNotification('Please log in to save.', 'error');
+        speakText('Please log in to save.');
+        handleLogout();
+        return;
+      }
+      try {
+        const response = await fetch(`http://localhost:5000/api/vibe/save/${chatId}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
         });
-        setGeneratedContent(prev => prev?.chatId === chatId ? { ...prev, isSaved: true } : prev);
-        addNotification(data.message, 'success');
-        speakText(data.message);
-        setRecentActivity(prev => [{ type: 'saved', title: 'Saved vibe', time: new Date().toLocaleString(), chatId }, ...prev.slice(0, 4)]);
-      } else throw new Error(data.message || 'Save failed');
-    } catch (error) {
-      console.error('Save error:', error);
-      addNotification('Failed to save', 'error');
-      speakText('Failed to save vibe.');
-    }
-  }, [addNotification, handleLogout, generatedContent, speakText]);
+        const data = await response.json();
+        if (response.ok) {
+          setSavedVibes(prev => {
+            const vibe = prev.find(v => v.chatId === chatId) || generatedContent;
+            if (!vibe) return prev;
+            const updatedVibe = { ...vibe, isSaved: true };
+            return [updatedVibe, ...prev.filter(v => v.chatId !== chatId)];
+          });
+          setGeneratedContent(prev => (prev?.chatId === chatId ? { ...prev, isSaved: true } : prev));
+          addNotification(data.message, 'success');
+          speakText(data.message);
+          setRecentActivity(prev => [
+            { type: 'saved', title: 'Saved vibe', time: new Date().toLocaleString(), chatId },
+            ...prev.slice(0, 4),
+          ]);
+        } else throw new Error(data.message || 'Save failed');
+      } catch (error) {
+        console.error('Save error:', error);
+        addNotification('Failed to save', 'error');
+        speakText('Failed to save vibe.');
+      }
+    },
+    [addNotification, handleLogout, generatedContent, speakText]
+  );
 
-  const playTTS = useCallback(async (chatId) => {
-    const token = localStorage.getItem('token');
-    if (!token) {
-      addNotification('Please log in', 'error');
-      speakText('Please log in to use TTS.');
-      handleLogout();
-      return;
-    }
-    try {
-      const response = await fetch(`http://localhost:5000/api/vibe/tts/${chatId}`, {
-        method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Failed to generate TTS');
+  const playTTS = useCallback(
+    async (chatId) => {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        addNotification('Please log in', 'error');
+        speakText('Please log in to use TTS.');
+        handleLogout();
+        return;
       }
-      const { audio } = await response.json();
-      if (audio && audioRef.current) {
-        audioRef.current.src = `data:audio/mp3;base64,${audio}`;
-        audioRef.current.play();
-        setCurrentPlayingAudio(chatId);
-        addNotification('Playing vibe description', 'success');
-        speakText('Playing vibe description.');
+      try {
+        const response = await fetch(`http://localhost:5000/api/vibe/tts/${chatId}`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to generate TTS');
+        }
+        const { audio } = await response.json();
+        if (audio && audioRef.current) {
+          audioRef.current.src = `data:audio/mp3;base64,${audio}`;
+          audioRef.current.play();
+          setCurrentPlayingAudio(chatId);
+          addNotification('Playing vibe description', 'success');
+          speakText('Playing vibe description.');
+        }
+      } catch (error) {
+        console.error('TTS error:', error);
+        addNotification('Failed to play TTS', 'error');
+        speakText('Failed to play TTS.');
       }
-    } catch (error) {
-      console.error('TTS error:', error);
-      addNotification('Failed to play TTS', 'error');
-      speakText('Failed to play TTS.');
-    }
-  }, [addNotification, speakText, handleLogout]);
+    },
+    [addNotification, speakText, handleLogout]
+  );
 
   const stopTTS = useCallback(() => {
     if (audioRef.current) {
@@ -502,56 +822,69 @@ const Dashboard = () => {
     }
   }, [addNotification, speakText]);
 
-  const generateShareLink = useCallback(async (chatId) => {
-    const token = localStorage.getItem('token');
-    if (!token) {
+  const generateShareLink = useCallback(
+    async (chatId) => {
+      const token = localStorage.getItem('token');
+      if (!token) {
         addNotification('Please log in to share.', 'error');
         speakText('Please log in to share a vibe.');
         handleLogout();
         return;
-    }
-    try {
+      }
+      try {
         const response = await fetch(`http://localhost:5000/api/vibe/share/${chatId}`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` },
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
         });
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Failed to generate share link');
+          const errorData = await response.json();
+          throw new Error(errorData.message || 'Failed to generate share link');
         }
         const { shareLink } = await response.json();
         navigator.clipboard.writeText(shareLink);
         addNotification('Share link copied to clipboard!', 'success');
         speakText('Share link copied to clipboard.');
-    } catch (error) {
+      } catch (error) {
         console.error('Share link error:', error);
         addNotification(`Failed to generate share link: ${error.message}`, 'error');
         speakText('Failed to generate share link.');
-    }
-  }, [addNotification, speakText, handleLogout]);
+      }
+    },
+    [addNotification, speakText, handleLogout]
+  );
 
-  const handleButtonClick = useCallback((action, event) => {
+  const handleButtonClick = useCallback(
+    (action, event) => {
       event.preventDefault();
       event.stopPropagation();
       switch (action) {
-          case 'generate':
-              handleGenerate();
-              break;
-          case 'save':
-              if (generatedContent?.chatId) {
-                  saveVibe(generatedContent.chatId);
-              }
-              break;
-          default:
-              break;
+        case 'generate':
+          handleGenerate();
+          break;
+        case 'save':
+          if (generatedContent?.chatId) {
+            saveVibe(generatedContent.chatId);
+          }
+          break;
+        default:
+          break;
       }
-  }, [handleGenerate, saveVibe, generatedContent]);
+    },
+    [handleGenerate, saveVibe, generatedContent]
+  );
 
-  const filteredVibes = useMemo(() => savedVibes.filter(vibe => {
-    const matchesCategory = filterCategory === 'all' || vibe.categories?.includes(filterCategory);
-    const matchesSearch = !searchQuery || vibe.title?.toLowerCase().includes(searchQuery.toLowerCase()) || vibe.description?.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesCategory && matchesSearch;
-  }), [savedVibes, filterCategory, searchQuery]);
+  const filteredVibes = useMemo(
+    () =>
+      savedVibes.filter(vibe => {
+        const matchesCategory = filterCategory === 'all' || vibe.categories?.includes(filterCategory);
+        const matchesSearch =
+          !searchQuery ||
+          vibe.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          vibe.description?.toLowerCase().includes(searchQuery.toLowerCase());
+        return matchesCategory && matchesSearch;
+      }),
+    [savedVibes, filterCategory, searchQuery]
+  );
 
   const useClickOutside = (ref, handler) => {
     useEffect(() => {
@@ -564,103 +897,96 @@ const Dashboard = () => {
   useClickOutside(profileRef, () => setShowProfile(false));
 
   const complementaryColors = useMemo(() => getComplementaryColors(dynamicColors), [dynamicColors, getComplementaryColors]);
-  const themeBrightness = useMemo(() => getThemeBrightness(dynamicColors), [dynamicColors, getThemeBrightness]);
+  const overallThemeBrightness = useMemo(() => getThemeBrightness(dynamicColors), [dynamicColors]);
 
-  const loadSharedVibe = useCallback(async (shareId) => {
-    try {
-        const response = await fetch(`http://localhost:5000/api/vibe/shared/${shareId}`);
-        if (!response.ok) {
-            throw new Error('Failed to load shared vibe. The link may be invalid or expired.');
-        }
-        const data = await response.json();
-        if (!data || !data.chatId) {
-            throw new Error('Invalid shared vibe data received');
-        }
-        const vibe = data.vibe || data;
-        const formattedVibe = {
-            id: vibe.chatId,
-            chatId: vibe.chatId,
-            timestamp: new Date(vibe.createdAt || Date.now()).toLocaleString(),
-            isSaved: true,
-            title: sanitizeInput(vibe.title) || `Shared Vibe`,
-            mood: sanitizeInput(vibe.mood) || "Personalized",
-            description: sanitizeInput(vibe.description) || `A shared lifestyle experience.`,
-            categories: vibe.categories || ['mood'],
-            colors: Array.isArray(vibe.colors) && vibe.colors.length >= 3 ? vibe.colors.slice(0, 3).map(color => validateHexColor(color) ? color : '#FFFFFF') : ['#FF6B6B', '#4ECDC4', '#45B7D1'],
-            music: Array.isArray(vibe.music) ? vibe.music : [],
-            food: Array.isArray(vibe.food) ? vibe.food : [],
-            fashion: Array.isArray(vibe.fashion) ? vibe.fashion : [],
-            travel: Array.isArray(vibe.travel) ? vibe.travel : [],
-            decor: Array.isArray(vibe.decor) ? vibe.decor : [],
-            imageUrls: Array.isArray(vibe.imageUrls) && vibe.imageUrls.length > 0 ? vibe.imageUrls.map(url => validateImageUrl(url) ? url : defaultImage) : [defaultImage],
-            spotifyTracks: Array.isArray(vibe.spotifyTracks) ? vibe.spotifyTracks : [],
-            icons: vibe.icons || {
-                music: 'Music', food: 'Utensils', fashion: 'Shirt', travel: 'MapPin', decor: 'Sofa'
-            }
-        };
-
-        setSharedVibe(formattedVibe);
-        setDynamicColors(formattedVibe.colors);
-        setBackgroundGradient(`linear-gradient(to bottom right, ${formattedVibe.colors[1]}, ${formattedVibe.colors[2]})`);
-        setActiveTab('saved');
-        addNotification('Shared vibe loaded successfully!', 'success');
-        speakText('Shared vibe loaded successfully.');
-
-    } catch (error) {
-        console.error('Load shared vibe error:', error);
-        addNotification(error.message, 'error');
-        speakText('Failed to load the shared vibe.');
-        window.history.replaceState({}, document.title, window.location.pathname);
-    }
-  }, [addNotification, speakText, defaultImage]);
-
-  // --- START: DEFINITIVE NOTIFICATION LOOP FIX ---
-  // This single useEffect handles all initial data fetching.
-  // The empty dependency array `[]` ensures it runs ONLY ONCE after the component mounts.
-  // This is the key to stopping the infinite loop.
-  useEffect(() => {
-    // Define the async function to fetch profile data
-    const fetchProfile = async () => {
-      const token = localStorage.getItem('token');
-      if (!token) {
-        const urlParams = new URLSearchParams(window.location.search);
-        const shareId = urlParams.get('shareId');
-        if (!shareId) {
-          window.location.href = '/auth';
-        }
+  const loadSharedVibe = useCallback(
+    async (shareId) => {
+      console.log('loadSharedVibe called with shareId:', shareId);
+      if (!shareId) {
+        console.log('No shareId provided');
+        addNotification('Invalid share link', 'error');
+        speakText('Invalid share link.');
         return;
       }
       try {
-        const response = await fetch('http://localhost:5000/api/auth/profile', { headers: { 'Authorization': `Bearer ${token}` } });
-        if (response.ok) {
-          const data = await response.json();
-          setUserProfile({ name: data.user.name, email: data.user.email });
-        } else {
-          throw new Error('Profile fetch failed');
+        const response = await fetch(`http://localhost:5000/api/vibe/shared/${sanitizeInput(shareId)}`, {
+          signal: AbortSignal.timeout(10000),
+        });
+        console.log('loadSharedVibe response status:', response.status);
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Failed to load shared vibe: ${errorText || response.statusText}`);
         }
-      } catch (error) {
-        console.error('Auth error:', error);
-        handleLogout();
-      }
-    };
+        const data = await response.json();
+        console.log('loadSharedVibe response data:', data);
+        if (!data || !data.chatId || !data.vibe) {
+          throw new Error('Invalid shared vibe data received');
+        }
+        const sanitizedVibe = sanitizeVibeData(data);
+        if (!sanitizedVibe) {
+          throw new Error('Failed to sanitize shared vibe data');
+        }
 
-    // Check for a shared vibe ID in the URL
+        setSharedVibe(sanitizedVibe);
+        setDynamicColors(sanitizedVibe.colors);
+        setBackgroundGradient(`linear-gradient(to bottom right, ${sanitizedVibe.colors[1]}, ${sanitizedVibe.colors[2]})`);
+        setActiveTab('saved');
+        addNotification(`Shared vibe "${sanitizedVibe.title}" loaded successfully!`, 'success');
+        speakText(`Shared vibe "${sanitizedVibe.title}" loaded successfully.`);
+      } catch (error) {
+        console.error('Load shared vibe error:', error);
+        addNotification(error.message || 'Failed to load the shared vibe.', 'error');
+        speakText('Failed to load the shared vibe.');
+      } finally {
+        window.history.replaceState({}, document.title, '/dashboard');
+      }
+    },
+    [addNotification, speakText]
+  );
+
+  useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const shareId = urlParams.get('shareId');
 
-    // Execute all initial loading functions
-    fetchProfile();
-    loadSavedChats();
-    loadRecentActivity();
-    if (shareId && !sharedVibe) {
-      loadSharedVibe(shareId);
-    }
+    const fetchProfile = async () => {
+      const token = localStorage.getItem('token');
+      if (!token && !shareId) {
+        window.location.href = '/auth';
+        return;
+      }
+      if (token) {
+        try {
+          const response = await fetch('http://localhost:5000/api/auth/profile', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          if (response.ok) {
+            const data = await response.json();
+            const userName = sanitizeInput(data.user.name);
+            setUserProfile({ name: userName, email: sanitizeInput(data.user.email) });
+            if (isInitialLoad) {
+                addNotification(`Welcome back, ${userName}!`, 'info');
+                setIsInitialLoad(false);
+            }
+          } else {
+            throw new Error('Profile fetch failed');
+          }
+        } catch (error) {
+          console.error('Auth error:', error);
+          addNotification('Authentication failed, please log in again.', 'error');
+          handleLogout();
+        }
+      }
+    };
 
-    // The Eslint-disable line below is crucial. It tells React that we intentionally
-    // want this effect to run only once and not re-run if the functions change.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // The empty array `[]` is the fix.
-  // --- END: DEFINITIVE NOTIFICATION LOOP FIX ---
+    fetchProfile();
+    if (shareId) {
+      setSharedVibe(null);
+      loadSharedVibe(shareId);
+    } else {
+      loadSavedChats();
+      loadRecentActivity();
+    }
+  }, [addNotification, handleLogout, loadRecentActivity, loadSavedChats, loadSharedVibe, isInitialLoad]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -675,7 +1001,9 @@ const Dashboard = () => {
       recognitionRef.current.interimResults = true;
       recognitionRef.current.lang = 'en-US';
       recognitionRef.current.onresult = (event) => {
-        const transcript = Array.from(event.results).map(r => r[0].transcript).join(' ');
+        const transcript = Array.from(event.results)
+          .map(r => r[0].transcript)
+          .join(' ');
         setVoiceTranscript(sanitizeInput(transcript));
         debouncedSetInputText(sanitizeInput(transcript));
       };
@@ -703,11 +1031,18 @@ const Dashboard = () => {
     const handleKeyDown = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') handleGenerate();
       else if ((e.ctrlKey || e.metaKey) && e.key === 'k') document.querySelector('input[placeholder="Search vibes..."]')?.focus();
-      else if (e.ctrlKey || e.metaKey) switch (e.key) {
-        case '1': setActiveTab('create'); break;
-        case '2': setActiveTab('saved'); break;
-        case '3': setActiveTab('activity'); break;
-      }
+      else if (e.ctrlKey || e.metaKey)
+        switch (e.key) {
+          case '1':
+            setActiveTab('create');
+            break;
+          case '2':
+            setActiveTab('saved');
+            break;
+          case '3':
+            setActiveTab('activity');
+            break;
+        }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
@@ -742,241 +1077,36 @@ const Dashboard = () => {
     img.src = svgUrl;
   }, [dynamicColors]);
 
-  const LazyVibeCard = React.memo(({ vibe }) => {
-      const cardRef = useRef(null);
-      const [isVisible, setIsVisible] = useState(false);
-      const [isLoaded, setIsLoaded] = useState(false);
-      useEffect(() => {
-          const observer = new IntersectionObserver(
-              ([entry]) => {
-                  if (entry.isIntersecting && !isVisible) {
-                      setIsVisible(true);
-                      const timer = setTimeout(() => setIsLoaded(true), 100);
-                      return () => clearTimeout(timer);
-                  }
-              }, {
-                  threshold: 0.1,
-                  rootMargin: '50px'
-              }
-          );
-          const currentRef = cardRef.current;
-          if (currentRef) {
-              observer.observe(currentRef);
-          }
-          return () => {
-              if (currentRef) {
-                  observer.unobserve(currentRef);
-              }
-          };
-      }, [isVisible]);
-
-      const memoizedVibe = useMemo(() => vibe, [vibe.id, vibe.title, vibe.colors, vibe.imageUrls]);
-
-      return (
-        <div ref={cardRef} className="w-full">
-            {isVisible && isLoaded ? (
-                <VibeCard vibe={memoizedVibe} ref={cardRef} />
-            ) : (
-                <div className="h-[480px] w-full bg-gray-800/20 rounded-2xl animate-pulse flex flex-col">
-                    <div className="h-48 bg-gray-700/30 rounded-t-2xl" />
-                    <div className="p-6 flex-1 flex flex-col gap-4">
-                        <div className="h-6 bg-gray-700/30 rounded w-3/4" />
-                        <div className="h-4 bg-gray-700/30 rounded w-1/2" />
-                        <div className="h-20 bg-gray-700/30 rounded" />
-                        <div className="h-4 bg-gray-700/30 rounded w-full" />
-                    </div>
-                </div>
-            )}
-        </div>
-      );
-  });
-  LazyVibeCard.displayName = 'LazyVibeCard';
-
-  const NotificationIcon = ({ type }) => {
-    const iconProps = { className: "w-5 h-5" };
-    switch (type) {
-      case 'success': return <CheckCircle {...iconProps} />;
-      case 'error': return <AlertCircle {...iconProps} />;
-      default: return <Info {...iconProps} />;
-    }
-  };
-
-  const VibeCard = React.memo(React.forwardRef(({ vibe }, ref) => {
-    const [currentSlide, setCurrentSlide] = useState(0);
-    const [isAutoScroll, setIsAutoScroll] = useState(true);
-    const [isContentReady, setIsContentReady] = useState(false);
-    const internalRef = useRef(null);
-    const cardRef = ref || internalRef;
-
-    const validImageUrls = useMemo(() => {
-      return (vibe?.imageUrls || []).map(url => validateImageUrl(url) ? url : defaultImage);
-    }, [vibe?.imageUrls]);
-
-    const cardThemeBrightness = useMemo(() => getThemeBrightness(vibe?.colors || []), [vibe?.colors]);
-
-    useEffect(() => {
-      if (vibe?.id) {
-        const timer = setTimeout(() => setIsContentReady(true), 200);
-        return () => clearTimeout(timer);
-      }
-    }, [vibe?.id]);
-
-    useEffect(() => {
-      let interval;
-      if (isAutoScroll && validImageUrls.length > 1 && isContentReady) {
-        interval = setInterval(() => {
-          setCurrentSlide(prev => (prev + 1) % validImageUrls.length);
-        }, 5000);
-      }
-      return () => clearInterval(interval);
-    }, [isAutoScroll, validImageUrls.length, isContentReady]);
-    
-    const handleInteractiveClick = useCallback((e, action) => {
-      e.preventDefault();
-      e.stopPropagation();
-      action();
-    }, []);
-
-    const nextSlide = useCallback(() => setCurrentSlide(prev => (prev + 1) % validImageUrls.length), [validImageUrls.length]);
-    const prevSlide = useCallback(() => setCurrentSlide(prev => (prev - 1 + validImageUrls.length) % validImageUrls.length), [validImageUrls.length]);
-    
-    const IconMap = { Music, Utensils, Shirt, MapPin, Sofa };
-    const titleColorClass = cardThemeBrightness === 'dark' ? 'text-white' : 'text-black';
-    const textColorClass = cardThemeBrightness === 'dark' ? 'text-gray-300' : 'text-gray-700';
-    const mutedTextColorClass = cardThemeBrightness === 'dark' ? 'text-gray-400' : 'text-gray-600';
-    const semiBoldTextColorClass = cardThemeBrightness === 'dark' ? 'text-gray-200' : 'text-gray-800';
-
-    const handleImageError = useCallback((e) => {
-      if (e.target.src !== defaultImage) e.target.src = defaultImage;
-      e.target.onerror = null;
-    }, [defaultImage]);
-
-    const spotifyPlayers = useMemo(() => {
-    return (vibe.spotifyTracks || []).map((track, index) => (
-      <iframe
-        key={track.id}
-        ref={el => spotifyPlayerRefs.current[index] = el}
-        // CORRECTED LINE: Changed to a valid Spotify embed URL and fixed the template literal
-        src={`https://open.spotify.com/embed/track/${track.id}?utm_source=generator&theme=0`}
-        width="100%"
-        height="80"
-        frameBorder="0"
-        allow="clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-        loading="lazy"
-        className="flex-shrink-0"
-        title={track.name}
-      />
-    ));
-  }, [vibe.spotifyTracks]);
-
-    return (
-      <div
-        ref={cardRef}
-        className={`bg-black/30 backdrop-blur-lg border rounded-2xl overflow-hidden shadow-2xl hover:-translate-y-1 transition-all duration-300 w-full min-h-[480px] flex flex-col ${themeBrightness === 'dark' ? 'border-white/10' : 'border-black/10'}`}
-        style={{ '--primary-color': complementaryColors.primary, '--secondary-color': complementaryColors.secondary }}
-      >
-        <style>
-        {`
-          @keyframes kenburns { 0% { transform: scale(1) translate(0, 0); } 100% { transform: scale(1.15) translate(-2%, 2%); } }
-          .ken-burns-animation { animation: kenburns 10s ease-out forwards; }
-        `}
-        </style>
-        <div className={`absolute inset-0 bg-gray-800/20 z-10 transition-opacity duration-500 ${isContentReady ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-          <div className="w-full h-full flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin" style={{ color: complementaryColors.primary }} /></div>
-        </div>
-        <div className="relative w-full h-48 overflow-hidden group">
-          {validImageUrls.length > 0 && (
-            <div className="absolute inset-0 flex">
-              {validImageUrls.map((url, index) => (
-                <div key={`${vibe.id}-img-container-${index}`} className="w-full h-full absolute top-0 left-0 transition-opacity duration-1000 ease-in-out flex-shrink-0" style={{ opacity: currentSlide === index ? 1 : 0 }}>
-                  <img src={url} alt={`${vibe.title} ${index + 1}`} className={`w-full h-full object-cover ${currentSlide === index ? 'ken-burns-animation' : ''}`} onError={handleImageError} crossOrigin="anonymous" />
-                </div>
-              ))}
-            </div>
-          )}
-          {validImageUrls.length > 1 && (
-            <>
-              <button onClick={(e) => handleInteractiveClick(e, prevSlide)} className="absolute top-1/2 left-2 -translate-y-1/2 z-20 p-2 bg-black/40 rounded-full text-white hover:bg-black/60 transition-all opacity-0 group-hover:opacity-100" title="Previous"><ChevronLeft className="w-5 h-5" /></button>
-              <button onClick={(e) => handleInteractiveClick(e, nextSlide)} className="absolute top-1/2 right-2 -translate-y-1/2 z-20 p-2 bg-black/40 rounded-full text-white hover:bg-black/60 transition-all opacity-0 group-hover:opacity-100" title="Next"><ChevronRight className="w-5 h-5" /></button>
-              <div className="absolute bottom-2 left-1/2 transform -translate-x-1/2 flex space-x-2 z-10">
-                {validImageUrls.map((_, index) => (<button key={index} onClick={(e) => handleInteractiveClick(e, () => setCurrentSlide(index))} className={`w-2 h-2 rounded-full transition-all ${currentSlide === index ? 'bg-white scale-125' : 'bg-gray-400'}`} />))}
-              </div>
-              <div className="absolute top-2 right-2 z-10">
-                <button onClick={(e) => handleInteractiveClick(e, () => setIsAutoScroll(!isAutoScroll))} className="p-2 bg-black/50 rounded-full text-white hover:bg-black/70" title={isAutoScroll ? 'Pause Auto-Scroll' : 'Start Auto-Scroll'}>{isAutoScroll ? <Pause className="w-5 h-5" /> : <Play className="w-5 h-5" />}</button>
-              </div>
-            </>
-          )}
-        </div>
-        <div className="p-6 flex-1 flex flex-col">
-          {spotifyPlayers.length > 0 && (
-            <div className="mb-4">
-              <h4 className={`text-sm font-semibold ${semiBoldTextColorClass} mb-2`}>Spotify Playlist</h4>
-              <div className="relative w-full h-20 overflow-hidden">
-                <div className="absolute inset-0 flex transition-transform duration-500 ease-in-out" style={{ transform: `translateX(-${currentSpotifyTrackIndex * 100}%)` }}>{spotifyPlayers}</div>
-              </div>
-            </div>
-          )}
-          <div className="flex justify-between items-start mb-2">
-            <div>
-              <h3 className={`text-xl font-bold ${titleColorClass}`}>{vibe?.title || 'Untitled Vibe'}</h3>
-              <p className={`text-xs ${mutedTextColorClass}`}>{vibe?.timestamp || 'N/A'}</p>
-            </div>
-            <div className="flex space-x-2">
-              {!vibe?.isSaved && vibe?.chatId && (<button onClick={(e) => handleInteractiveClick(e, () => saveVibe(vibe.chatId))} className="p-2 bg-white/10 rounded-full hover:bg-white/20 text-white" title="Save"><Save className="w-4 h-4" /></button>)}
-              {vibe?.isSaved && vibe?.chatId && (<button onClick={(e) => handleInteractiveClick(e, () => generateShareLink(vibe.chatId))} className="p-2 bg-white/10 rounded-full hover:bg-white/20 text-white" title="Share Link"><Share2 className="w-4 h-4" /></button>)}
-              {vibe?.chatId && (<button onClick={(e) => handleInteractiveClick(e, () => currentPlayingAudio === vibe.chatId ? stopTTS() : playTTS(vibe.chatId))} className="p-2 bg-white/10 rounded-full hover:bg-white/20 text-white" title={currentPlayingAudio === vibe.chatId ? 'Stop TTS' : 'Play TTS'}>{currentPlayingAudio === vibe.chatId ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}</button>)}
-            </div>
-          </div>
-          <p className={`mb-4 text-sm ${textColorClass}`}>{vibe?.description || 'No description available.'}</p>
-          <div className="space-y-3">
-            <div className="flex items-center space-x-2">
-              <Palette className="w-4 h-4" style={{color: complementaryColors.primary}} />
-              <div className="flex flex-wrap gap-2">
-                {(vibe?.colors || []).map(color => (<div key={color} className="w-5 h-5 rounded-full border border-white/20" style={{ backgroundColor: color }} title={color} />))}
-              </div>
-            </div>
-            {[
-              { icon: vibe?.icons?.music || 'Music', label: 'Music', items: vibe?.music || [] },
-              { icon: vibe?.icons?.food || 'Utensils', label: 'Food', items: vibe?.food || [] },
-              { icon: vibe?.icons?.fashion || 'Shirt', label: 'Fashion', items: vibe?.fashion || [] },
-              { icon: vibe?.icons?.travel || 'MapPin', label: 'Travel', items: vibe?.travel || [] },
-              { icon: vibe?.icons?.decor || 'Sofa', label: 'Decor', items: vibe?.decor || [] }
-            ].map(({ icon, label, items }) => {
-              const Icon = IconMap[icon] || Palette;
-              return items.length > 0 && (
-                <div key={label} className="flex items-start space-x-2">
-                  <Icon className="w-4 h-4 mt-1" style={{color: complementaryColors.primary}} />
-                  <div>
-                    <span className={`text-sm font-semibold ${semiBoldTextColorClass}`}>{label}:</span>
-                    <span className={`text-sm ${textColorClass}`}> {items.join(', ')}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    );
-  }));
-  VibeCard.displayName = 'VibeCard';
-
-  const handleVoiceCommand = useCallback((command) => {
-    const lowerCommand = command.toLowerCase();
-    if (lowerCommand.includes('switch to create')) setActiveTab('create');
-    else if (lowerCommand.includes('switch to saved')) setActiveTab('saved');
-    else if (lowerCommand.includes('switch to activity')) setActiveTab('activity');
-    else if (lowerCommand.includes('generate')) handleGenerate();
-    else if (lowerCommand.includes('save vibe') && generatedContent) saveVibe(generatedContent.chatId);
-    else if (lowerCommand.includes('play tts') && generatedContent) playTTS(generatedContent.chatId);
-    else if (lowerCommand.includes('stop tts')) stopTTS();
-    else if (lowerCommand.includes('help')) setShowTutorial(true);
-    else speakText('Command not recognized. Say "help" for options.');
-  }, [generatedContent, handleGenerate, saveVibe, playTTS, stopTTS, speakText]);
-
-  const overallThemeBrightness = getThemeBrightness(dynamicColors);
+  const handleVoiceCommand = useCallback(
+    (command) => {
+      const lowerCommand = sanitizeInput(command.toLowerCase());
+      if (lowerCommand.includes('switch to create')) setActiveTab('create');
+      else if (lowerCommand.includes('switch to saved')) setActiveTab('saved');
+      else if (lowerCommand.includes('switch to activity')) setActiveTab('activity');
+      else if (lowerCommand.includes('generate')) handleGenerate();
+      else if (lowerCommand.includes('save vibe') && generatedContent) saveVibe(generatedContent.chatId);
+      else if (lowerCommand.includes('play tts') && generatedContent) playTTS(generatedContent.chatId);
+      else if (lowerCommand.includes('stop tts')) stopTTS();
+      else if (lowerCommand.includes('help')) setShowTutorial(true);
+      else speakText('Command not recognized. Say "help" for options.');
+    },
+    [generatedContent, handleGenerate, saveVibe, playTTS, stopTTS, speakText]
+  );
+  
   const mainTextColorClass = overallThemeBrightness === 'dark' ? 'text-white' : 'text-black';
   const placeholderColorClass = overallThemeBrightness === 'dark' ? 'placeholder-gray-400' : 'placeholder-gray-500';
 
+  const cardProps = {
+    complementaryColors,
+    overallThemeBrightness,
+    defaultImage,
+    currentPlayingAudio,
+    onSaveVibe: saveVibe,
+    onGenerateShareLink: generateShareLink,
+    onPlayTTS: playTTS,
+    onStopTTS: stopTTS,
+  };
+  
   return (
     <ErrorBoundary>
       <div className={`min-h-screen bg-black ${mainTextColorClass} font-sans`} style={{ background: backgroundGradient }}>
@@ -985,19 +1115,37 @@ const Dashboard = () => {
           {notifications.map(notification => (
             <div
               key={notification.id}
-              className={`p-4 rounded-xl backdrop-blur-xl border shadow-lg flex items-start space-x-3 ${notification.type === 'success' ? 'bg-green-500/20 border-green-500/30 text-green-200' : notification.type === 'error' ? 'bg-red-500/20 border-red-500/30 text-red-200' : 'bg-blue-500/20 border-blue-500/30 text-blue-200'}`}
+              className={`p-4 rounded-xl backdrop-blur-xl border shadow-lg flex items-start space-x-3 ${
+                notification.type === 'success'
+                  ? 'bg-green-500/20 border-green-500/30 text-green-200'
+                  : notification.type === 'error'
+                  ? 'bg-red-500/20 border-red-500/30 text-red-200'
+                  : 'bg-blue-500/20 border-blue-500/30 text-blue-200'
+              }`}
             >
               <NotificationIcon type={notification.type} />
               <div className="flex-1">
                 <p className="text-sm font-medium">{notification.message}</p>
                 <p className="text-xs opacity-75 mt-1">{notification.timestamp.toLocaleTimeString()}</p>
               </div>
-              <button onClick={() => setNotifications(prev => prev.filter(n => n.id !== notification.id))} className="text-current opacity-50 hover:opacity-75"><X className="w-4 h-4" /></button>
+              <button
+                onClick={() => setNotifications(prev => prev.filter(n => n.id !== notification.id))}
+                className="text-current opacity-50 hover:opacity-75"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           ))}
         </div>
 
-        {!isOnline && (<div className="fixed top-4 left-4 z-50 bg-red-500/20 border border-red-500/30 rounded-lg p-3 backdrop-blur-xl"><div className="flex items-center space-x-2 text-red-200"><ZapOff className="w-5 h-5" /><span className="text-sm">Offline Mode</span></div></div>)}
+        {!isOnline && (
+          <div className="fixed top-4 left-4 z-50 bg-red-500/20 border border-red-500/30 rounded-lg p-3 backdrop-blur-xl">
+            <div className="flex items-center space-x-2 text-red-200">
+              <ZapOff className="w-5 h-5" />
+              <span className="text-sm">Offline Mode</span>
+            </div>
+          </div>
+        )}
 
         {showTutorial && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1007,16 +1155,37 @@ const Dashboard = () => {
               <p className="text-gray-300 mb-6">Your personal AI-powered lifestyle curator. Describe any mood, and VibeCraft will instantly generate a complete aesthetic for you.</p>
               <div className="grid md:grid-cols-2 gap-6 mb-8">
                 <div className="space-y-4">
-                  <div><h4 className="font-semibold text-white">Create Your Vibe</h4><p className="text-gray-300 text-sm">Use text or voice to describe your ideal mood.</p></div>
-                  <div><h4 className="font-semibold text-white">Dynamic Themes</h4><p className="text-gray-300 text-sm">The entire app theme changes to match your vibe's colors.</p></div>
+                  <div>
+                    <h4 className="font-semibold text-white">Create Your Vibe</h4>
+                    <p className="text-gray-300 text-sm">Use text or voice to describe your ideal mood.</p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-white">Dynamic Themes</h4>
+                    <p className="text-gray-300 text-sm">The entire app theme changes to match your vibe's colors.</p>
+                  </div>
                 </div>
                 <div className="space-y-4">
-                  <div><h4 className="font-semibold text-white">Voice Commands</h4><p className="text-gray-300 text-sm">Use commands like "generate" or "save vibe" for hands-free control.</p></div>
-                  <div><h4 className="font-semibold text-white">Save & Share</h4><p className="text-gray-300 text-sm">Save your favorite vibes and share them with friends via a link.</p></div>
+                  <div>
+                    <h4 className="font-semibold text-white">Voice Commands</h4>
+                    <p className="text-gray-300 text-sm">Use commands like "generate" or "save vibe" for hands-free control.</p>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-white">Save & Share</h4>
+                    <p className="text-gray-300 text-sm">Save your favorite vibes and share them with friends via a link.</p>
+                  </div>
                 </div>
               </div>
               <div className="flex justify-center">
-                <button onClick={() => { setShowTutorial(false); localStorage.setItem('hasSeenTutorial', 'true'); }} className="px-6 py-3 rounded-full font-semibold hover:scale-105 transition-transform" style={{background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})`}}>Let's Go!</button>
+                <button
+                  onClick={() => {
+                    setShowTutorial(false);
+                    localStorage.setItem('hasSeenTutorial', 'true');
+                  }}
+                  className="px-6 py-3 rounded-full font-semibold hover:scale-105 transition-transform"
+                  style={{ background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})` }}
+                >
+                  Let's Go!
+                </button>
               </div>
             </div>
           </div>
@@ -1026,30 +1195,73 @@ const Dashboard = () => {
           <div className="max-w-7xl mx-auto px-4 py-3">
             <div className="flex justify-between items-center">
               <div className="flex items-center space-x-2">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})`}}><Sparkles className="w-6 h-6 text-white" /></div>
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})` }}>
+                  <Sparkles className="w-6 h-6 text-white" />
+                </div>
                 <div>
-                  <span className="text-xl font-bold bg-clip-text text-transparent" style={{backgroundImage: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})`}}>VibeCraft</span>
+                  <span className="text-xl font-bold bg-clip-text text-transparent" style={{ backgroundImage: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})` }}>
+                    VibeCraft
+                  </span>
                   <div className={`text-xs ${overallThemeBrightness === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>Lifestyle Curator</div>
                 </div>
               </div>
               <div className="flex items-center space-x-3">
-                <button onClick={() => setIsVoiceMode(!isVoiceMode)} className={`p-2 rounded-full transition-colors ${isVoiceMode ? 'bg-green-500/20 text-green-400' : `${overallThemeBrightness === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'bg-black/10 hover:bg-black/20'}`}`} title="Toggle Voice Mode"><Mic className="w-5 h-5" /></button>
-                <button onClick={() => setIsAudioDescriptionMode(!isAudioDescriptionMode)} className={`p-2 rounded-full transition-colors ${isAudioDescriptionMode ? 'bg-green-500/20 text-green-400' : `${overallThemeBrightness === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'bg-black/10 hover:bg-black/20'}`}`} title="Toggle Audio"><Volume2 className="w-5 h-5" /></button>
-                <button onClick={() => setShowTutorial(true)} className={`p-2 rounded-full transition-colors ${overallThemeBrightness === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'bg-black/10 hover:bg-black/20'}`} title="Help"><HelpCircle className="w-5 h-5" /></button>
+                <button
+                  onClick={() => setIsVoiceMode(!isVoiceMode)}
+                  className={`p-2 rounded-full transition-colors ${isVoiceMode ? 'bg-green-500/20 text-green-400' : `${overallThemeBrightness === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'bg-black/10 hover:bg-black/20'}`}`}
+                  title="Toggle Voice Mode"
+                >
+                  <Mic className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setIsAudioDescriptionMode(!isAudioDescriptionMode)}
+                  className={`p-2 rounded-full transition-colors ${isAudioDescriptionMode ? 'bg-green-500/20 text-green-400' : `${overallThemeBrightness === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'bg-black/10 hover:bg-black/20'}`}`}
+                  title="Toggle Audio"
+                >
+                  <Volume2 className="w-5 h-5" />
+                </button>
+                <button
+                  onClick={() => setShowTutorial(true)}
+                  className={`p-2 rounded-full transition-colors ${overallThemeBrightness === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'bg-black/10 hover:bg-black/20'}`}
+                  title="Help"
+                >
+                  <HelpCircle className="w-5 h-5" />
+                </button>
                 <div ref={profileRef} className="relative">
-                  <button onClick={() => setShowProfile(!showProfile)} className="w-10 h-10 rounded-full flex items-center justify-center hover:scale-105 transition-transform" style={{background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})`}}><User className="w-5 h-5 text-white" /></button>
+                  <button
+                    onClick={() => setShowProfile(!showProfile)}
+                    className="w-10 h-10 rounded-full flex items-center justify-center hover:scale-105 transition-transform"
+                    style={{ background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})` }}
+                  >
+                    <User className="w-5 h-5 text-white" />
+                  </button>
                   {showProfile && (
-                    <div className={`absolute right-0 mt-2 w-64 backdrop-blur-xl border rounded-xl shadow-2xl p-4 ${overallThemeBrightness === 'dark' ? 'bg-gray-900/90 border-white/20 text-white' : 'bg-white/90 border-black/20 text-black'}`}>
-                      <div className="flex items-center space-x-3 pb-3 border-b" style={{borderColor: dynamicColors[0] + '40'}}>
-                        <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})`}}><User className="w-6 h-6 text-white" /></div>
+                    <div
+                      className={`absolute right-0 mt-2 w-64 backdrop-blur-xl border rounded-xl shadow-2xl p-4 ${overallThemeBrightness === 'dark' ? 'bg-gray-900/90 border-white/20 text-white' : 'bg-white/90 border-black/20 text-black'}`}
+                    >
+                      <div className="flex items-center space-x-3 pb-3 border-b" style={{ borderColor: dynamicColors[0] + '40' }}>
+                        <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})` }}>
+                          <User className="w-6 h-6 text-white" />
+                        </div>
                         <div>
                           <p className="font-semibold">{userProfile.name}</p>
                           <p className={`text-xs ${overallThemeBrightness === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>{userProfile.email}</p>
                         </div>
                       </div>
                       <div className="mt-3 space-y-1">
-                        <button className={`w-full flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors ${overallThemeBrightness === 'dark' ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-black/10'}`}><Settings className="w-4 h-4" /><span>Settings</span></button>
-                        <button onClick={handleLogout} className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"><LogOut className="w-4 h-4" /><span>Log Out</span></button>
+                        <button
+                          className={`w-full flex items-center space-x-3 px-3 py-2 text-sm rounded-lg transition-colors ${overallThemeBrightness === 'dark' ? 'text-gray-300 hover:bg-white/10' : 'text-gray-700 hover:bg-black/10'}`}
+                        >
+                          <Settings className="w-4 h-4" />
+                          <span>Settings</span>
+                        </button>
+                        <button
+                          onClick={handleLogout}
+                          className="w-full flex items-center space-x-3 px-3 py-2 text-sm text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          <span>Log Out</span>
+                        </button>
                       </div>
                     </div>
                   )}
@@ -1062,9 +1274,33 @@ const Dashboard = () => {
         <main className="max-w-7xl mx-auto px-4 pt-24 pb-12">
           <div className="flex justify-center mb-8">
             <div className={`p-1.5 rounded-full flex space-x-2 backdrop-blur-md ${overallThemeBrightness === 'dark' ? 'bg-black/20' : 'bg-white/20'}`}>
-              <button onClick={() => setActiveTab('create')} className={`px-4 py-2 rounded-full text-sm font-semibold transition-all flex items-center space-x-2 ${activeTab === 'create' ? 'text-white shadow-lg' : `${overallThemeBrightness === 'dark' ? 'text-gray-300' : 'text-gray-800'} hover:bg-white/10`}`} style={activeTab === 'create' ? {background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})`} : {}}><Wand2 className="w-4 h-4" /><span>Create</span></button>
-              <button onClick={() => { setActiveTab('saved'); loadSavedChats(); }} className={`px-4 py-2 rounded-full text-sm font-semibold transition-all flex items-center space-x-2 ${activeTab === 'saved' ? 'text-white shadow-lg' : `${overallThemeBrightness === 'dark' ? 'text-gray-300' : 'text-gray-800'} hover:bg-white/10`}`} style={activeTab === 'saved' ? {background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})`} : {}}><Bookmark className="w-4 h-4" /><span>Saved ({savedVibes.length})</span></button>
-              <button onClick={() => setActiveTab('activity')} className={`px-4 py-2 rounded-full text-sm font-semibold transition-all flex items-center space-x-2 ${activeTab === 'activity' ? 'text-white shadow-lg' : `${overallThemeBrightness === 'dark' ? 'text-gray-300' : 'text-gray-800'} hover:bg-white/10`}`} style={activeTab === 'activity' ? {background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})`} : {}}><Clock className="w-4 h-4" /><span>Activity</span></button>
+              <button
+                onClick={() => setActiveTab('create')}
+                className={`px-4 py-2 rounded-full text-sm font-semibold transition-all flex items-center space-x-2 ${activeTab === 'create' ? 'text-white shadow-lg' : `${overallThemeBrightness === 'dark' ? 'text-gray-300' : 'text-gray-800'} hover:bg-white/10`}`}
+                style={activeTab === 'create' ? { background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})` } : {}}
+              >
+                <Wand2 className="w-4 h-4" />
+                <span>Create</span>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('saved');
+                  loadSavedChats();
+                }}
+                className={`px-4 py-2 rounded-full text-sm font-semibold transition-all flex items-center space-x-2 ${activeTab === 'saved' ? 'text-white shadow-lg' : `${overallThemeBrightness === 'dark' ? 'text-gray-300' : 'text-gray-800'} hover:bg-white/10`}`}
+                style={activeTab === 'saved' ? { background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})` } : {}}
+              >
+                <Bookmark className="w-4 h-4" />
+                <span>Saved ({savedVibes.length})</span>
+              </button>
+              <button
+                onClick={() => setActiveTab('activity')}
+                className={`px-4 py-2 rounded-full text-sm font-semibold transition-all flex items-center space-x-2 ${activeTab === 'activity' ? 'text-white shadow-lg' : `${overallThemeBrightness === 'dark' ? 'text-gray-300' : 'text-gray-800'} hover:bg-white/10`}`}
+                style={activeTab === 'activity' ? { background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})` } : {}}
+              >
+                <Clock className="w-4 h-4" />
+                <span>Activity</span>
+              </button>
             </div>
           </div>
 
@@ -1083,25 +1319,76 @@ const Dashboard = () => {
               )}
               <div className={`max-w-3xl mx-auto backdrop-blur-lg border rounded-2xl p-6 shadow-xl ${overallThemeBrightness === 'dark' ? 'bg-black/30 border-white/10' : 'bg-white/30 border-black/10'}`}>
                 <div className="relative">
-                   <textarea ref={textareaRef} value={inputText} onChange={handleInputChange} onInput={handleTextareaResize} placeholder={isListening ? 'Listening...' : isVoiceMode ? 'Speak your vibe...' : "Describe your ideal vibe, mood, or aesthetic..."} className={`w-full bg-transparent text-lg resize-none focus:outline-none pr-40 pb-2 ${mainTextColorClass} ${placeholderColorClass}`} rows="1" disabled={isGenerating || isVoiceMode} style={{ minHeight: '40px' }} />
+                  <textarea
+                    ref={textareaRef}
+                    value={inputText}
+                    onChange={handleInputChange}
+                    onInput={handleTextareaResize}
+                    placeholder={isListening ? 'Listening...' : isVoiceMode ? 'Speak your vibe...' : 'Describe your ideal vibe, mood, or aesthetic...'}
+                    className={`w-full bg-transparent text-lg resize-none focus:outline-none pr-40 pb-2 ${mainTextColorClass} ${placeholderColorClass}`}
+                    rows="1"
+                    disabled={isGenerating || isVoiceMode}
+                    style={{ minHeight: '40px' }}
+                  />
                   <div className="absolute top-0 right-0 flex items-center space-x-2">
-                    <button onClick={toggleVoiceRecognition} className={`p-2 rounded-full transition-colors ${isListening ? 'bg-red-500/30 text-red-300 animate-pulse' : `${overallThemeBrightness === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'bg-black/10 hover:bg-black/20'}`}`} disabled={isGenerating} title={isListening ? 'Stop Listening' : 'Use Voice Input'}>{isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}</button>
-                     <button onClick={(e) => handleButtonClick('generate', e)} disabled={isGenerating || !inputText.trim() || isVoiceMode} className="px-4 py-2 rounded-full font-semibold flex items-center space-x-2 text-white hover:scale-105 transition-transform disabled:opacity-50 disabled:scale-100" style={{background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})`}} type="button">{isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}<span>{isGenerating ? 'Crafting...' : 'Generate'}</span></button>
+                    <button
+                      onClick={toggleVoiceRecognition}
+                      className={`p-2 rounded-full transition-colors ${isListening ? 'bg-red-500/30 text-red-300 animate-pulse' : `${overallThemeBrightness === 'dark' ? 'bg-white/10 hover:bg-white/20' : 'bg-black/10 hover:bg-black/20'}`}`}
+                      disabled={isGenerating}
+                      title={isListening ? 'Stop Listening' : 'Use Voice Input'}
+                    >
+                      {isListening ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
+                    </button>
+                    <button
+                      onClick={(e) => handleButtonClick('generate', e)}
+                      disabled={isGenerating || !inputText.trim() || isVoiceMode}
+                      className="px-4 py-2 rounded-full font-semibold flex items-center space-x-2 text-white hover:scale-105 transition-transform disabled:opacity-50 disabled:scale-100"
+                      style={{ background: `linear-gradient(to right, ${dynamicColors[0]}, ${dynamicColors[1]})` }}
+                      type="button"
+                    >
+                      {isGenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+                      <span>{isGenerating ? 'Crafting...' : 'Generate'}</span>
+                    </button>
                   </div>
                 </div>
-                {voiceTranscript && (<p className={`text-sm mt-2 ${overallThemeBrightness === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>Heard: "{voiceTranscript}"</p>)}
+                {voiceTranscript && (
+                  <p className={`text-sm mt-2 ${overallThemeBrightness === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>Heard: "{voiceTranscript}"</p>
+                )}
               </div>
               {!generatedContent && !isGenerating && (
                 <div className="max-w-4xl mx-auto mt-8">
-                  <div className="text-center mb-4"><h3 className={`text-lg font-semibold ${overallThemeBrightness === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>Or try a quick prompt to get started!</h3></div>
+                  <div className="text-center mb-4">
+                    <h3 className={`text-lg font-semibold ${overallThemeBrightness === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>Or try a quick prompt to get started!</h3>
+                  </div>
                   <div className="flex flex-wrap justify-center gap-3">
-                    {quickPrompts.map((prompt, index) => (<button key={index} onClick={() => setInputText(prompt)} className={`px-4 py-2 border rounded-full text-sm transition-colors ${overallThemeBrightness === 'dark' ? 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10' : 'bg-black/5 border-black/10 text-gray-700 hover:bg-black/10'}`}>{prompt}</button>))}
+                    {quickPrompts.map((prompt, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setInputText(prompt)}
+                        className={`px-4 py-2 border rounded-full text-sm transition-colors ${overallThemeBrightness === 'dark' ? 'bg-white/5 border-white/10 text-gray-300 hover:bg-white/10' : 'bg-black/5 border-black/10 text-gray-700 hover:bg-black/10'}`}
+                      >
+                        {prompt}
+                      </button>
+                    ))}
                   </div>
                 </div>
               )}
               <div className="mt-12 flex justify-center">
-                {isGenerating && (<div className="flex flex-col items-center justify-center text-center p-8"><Loader2 className="w-12 h-12 animate-spin mb-4" style={{color: complementaryColors.primary}} /><p className="text-xl font-semibold">Crafting your custom vibe...</p><p className={`${overallThemeBrightness === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>The AI is getting creative, one moment!</p></div>)}
-                {generatedContent && (<div className="max-w-4xl w-full"><VibeCard ref={generatedVibeCardRef} vibe={generatedContent} /><div className="mt-4 text-center text-lg font-semibold" style={{color: complementaryColors.accent}}>{comfortMessage}</div></div>)}
+                {isGenerating && (
+                  <div className="flex flex-col items-center justify-center text-center p-8">
+                    <Loader2 className="w-12 h-12 animate-spin mb-4" style={{ color: complementaryColors.primary }} />
+                    <p className="text-xl font-semibold">Crafting your custom vibe...</p>
+                    <p className={`${overallThemeBrightness === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>The AI is getting creative, one moment!</p>
+                  </div>
+                )}
+                {generatedContent && (
+                  <div className="max-w-4xl w-full">
+                    <VibeCard ref={generatedVibeCardRef} vibe={generatedContent} {...cardProps} />
+                    <div className="mt-4 text-center text-lg font-semibold" style={{ color: complementaryColors.accent }}>
+                      {comfortMessage}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1111,20 +1398,56 @@ const Dashboard = () => {
               <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-8">
                 <div className="relative w-full md:max-w-xs">
                   <Search className={`absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 ${overallThemeBrightness === 'dark' ? 'text-gray-400' : 'text-gray-500'}`} />
-                  <input type="text" placeholder="Search vibes..." value={searchQuery} onChange={(e) => debouncedSetSearchQuery(e.target.value)} className={`w-full border rounded-full py-2.5 pl-12 pr-4 focus:outline-none focus:ring-2 backdrop-blur-md transition-colors ${overallThemeBrightness === 'dark' ? 'bg-black/20 border-white/10 focus:ring-white' : 'bg-white/20 border-black/10 focus:ring-black'}`} style={{'--tw-ring-color': dynamicColors[0]}} />
+                  <input
+                    type="text"
+                    placeholder="Search vibes..."
+                    value={searchQuery}
+                    onChange={(e) => debouncedSetSearchQuery(e.target.value)}
+                    className={`w-full border rounded-full py-2.5 pl-12 pr-4 focus:outline-none focus:ring-2 backdrop-blur-md transition-colors ${overallThemeBrightness === 'dark' ? 'bg-black/20 border-white/10 focus:ring-white' : 'bg-white/20 border-black/10 focus:ring-black'}`}
+                    style={{ '--tw-ring-color': dynamicColors[0] }}
+                  />
                 </div>
                 <div className={`flex items-center space-x-1 p-1 rounded-full backdrop-blur-md ${overallThemeBrightness === 'dark' ? 'bg-black/20' : 'bg-white/20'}`}>
-                  {['all', ...categories.slice(0, 5).map(c => c.id)].map(cat => (<button key={cat} onClick={() => setFilterCategory(cat)} className={`px-3 py-1 text-sm rounded-full transition-colors ${filterCategory === cat ? 'bg-white/20' : 'hover:bg-white/10'}`}>{cat === 'all' ? 'All' : categories.find(c => c.id === cat).name}</button>))}
+                  {['all', ...categories.slice(0, 5).map(c => c.id)].map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setFilterCategory(cat)}
+                      className={`px-3 py-1 text-sm rounded-full transition-colors ${filterCategory === cat ? 'bg-white/20' : 'hover:bg-white/10'}`}
+                    >
+                      {cat === 'all' ? 'All' : categories.find(c => c.id === cat).name}
+                    </button>
+                  ))}
                 </div>
                 <div className={`flex items-center space-x-1 p-1 rounded-full backdrop-blur-md ${overallThemeBrightness === 'dark' ? 'bg-black/20' : 'bg-white/20'}`}>
-                  <button onClick={() => setViewMode('grid')} className={`p-2 rounded-full transition-colors ${viewMode === 'grid' ? 'bg-white/20' : 'hover:bg-white/10'}`} title="Grid View"><Grid className="w-5 h-5" /></button>
-                  <button onClick={() => setViewMode('list')} className={`p-2 rounded-full transition-colors ${viewMode === 'list' ? 'bg-white/20' : 'hover:bg-white/10'}`} title="List View"><List className="w-5 h-5" /></button>
+                  <button
+                    onClick={() => setViewMode('grid')}
+                    className={`p-2 rounded-full transition-colors ${viewMode === 'grid' ? 'bg-white/20' : 'hover:bg-white/10'}`}
+                    title="Grid View"
+                  >
+                    <Grid className="w-5 h-5" />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('list')}
+                    className={`p-2 rounded-full transition-colors ${viewMode === 'list' ? 'bg-white/20' : 'hover:bg-white/10'}`}
+                    title="List View"
+                  >
+                    <List className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
               {sharedVibe || filteredVibes.length > 0 ? (
                 <div className={`transition-all duration-500 ${viewMode === 'grid' ? 'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6' : 'flex flex-col items-center space-y-6'}`}>
-                  {sharedVibe && (<div className="w-full md:col-span-2 lg:col-span-3"><h3 className="text-xl font-bold mb-4 text-center">Loaded Shared Vibe</h3><LazyVibeCard key={sharedVibe.id} vibe={sharedVibe} /></div>)}
-                  {filteredVibes.filter(vibe => vibe.id !== sharedVibe?.id).map(vibe => (<LazyVibeCard key={vibe.id} vibe={vibe} />))}
+                  {sharedVibe && (
+                    <div className="w-full md:col-span-2 lg:col-span-3">
+                      <h3 className="text-xl font-bold mb-4 text-center">Shared Vibe</h3>
+                      <LazyVibeCard key={sharedVibe.id} vibe={sharedVibe} {...cardProps} />
+                    </div>
+                  )}
+                  {filteredVibes
+                    .filter(vibe => vibe.id !== sharedVibe?.id)
+                    .map(vibe => (
+                      <LazyVibeCard key={vibe.id} vibe={vibe} {...cardProps} />
+                    ))}
                 </div>
               ) : (
                 <div className="text-center py-16">
@@ -1143,7 +1466,9 @@ const Dashboard = () => {
                 {recentActivity.length > 0 ? (
                   <ul className="space-y-4">
                     {recentActivity.map((activity, index) => (
-                      <li key={index} className={`flex items-center space-x-4 p-3 rounded-lg cursor-pointer transition-colors ${overallThemeBrightness === 'dark' ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}
+                      <li
+                        key={index}
+                        className={`flex items-center space-x-4 p-3 rounded-lg cursor-pointer transition-colors ${overallThemeBrightness === 'dark' ? 'bg-white/5 hover:bg-white/10' : 'bg-black/5 hover:bg-black/10'}`}
                         onClick={() => {
                           const vibe = savedVibes.find(v => v.chatId === activity.chatId) || generatedContent;
                           if (vibe) {
@@ -1153,7 +1478,7 @@ const Dashboard = () => {
                           }
                         }}
                       >
-                        <Clock className="w-5 h-5" style={{color: complementaryColors.primary}} />
+                        <Clock className="w-5 h-5" style={{ color: complementaryColors.primary }} />
                         <div className="flex-1">
                           <p className="text-sm font-medium">{activity.title}</p>
                           <p className={`text-xs ${overallThemeBrightness === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>{activity.time}</p>
