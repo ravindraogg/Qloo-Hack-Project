@@ -7,17 +7,23 @@ import dotenv from "dotenv";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import axios from "axios";
 import https from "https";
+import crypto from "crypto";
+import rateLimit from "express-rate-limit"; 
+import Redis from "ioredis"; 
+import sanitize from "mongo-sanitize"; 
 
 dotenv.config({ quiet: true });
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const QLOO_API_KEY = process.env.QLOO_API_KEY;
 const JWT_SECRET = process.env.JWT_SECRET;
-const MONGODB_URI = process.env.MONGODB_URI;
+const MONGODB_URI = process.env.MONGOD_URI;
 const UNSPLASH_API_KEY = process.env.UNSPLASH_API_KEY;
 const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
+const REDIS_URL = process.env.REDIS_URL || "redis://localhost:6379"; 
 const PORT = process.env.PORT || 5000;
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000";
 
 if (
   !GEMINI_API_KEY ||
@@ -26,7 +32,8 @@ if (
   !MONGODB_URI ||
   !UNSPLASH_API_KEY ||
   !SPOTIFY_CLIENT_ID ||
-  !SPOTIFY_CLIENT_SECRET
+  !SPOTIFY_CLIENT_SECRET ||
+  !REDIS_URL
 ) {
   console.error(
     "[CONFIG] Missing required environment variables at",
@@ -41,12 +48,42 @@ console.log(
   new Date().toISOString()
 );
 
+const redis = new Redis(REDIS_URL); 
+console.log(
+  "[INIT] Redis client initialized at",
+  new Date().toISOString()
+);
+
 const app = express();
+
+// Rate limiting for authentication routes
+const authRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  message: {
+    message: "Too many requests from this IP, please try again after 15 minutes",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// General rate limiting for other API endpoints
+const generalRateLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 200, // Higher limit for general API calls
+  message: {
+    message: "Too many requests from this IP, please try again after 15 minutes",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 app.use(cors());
 app.use(express.json());
+app.use("/api/auth", authRateLimiter); // Apply rate limiting to auth routes
+app.use("/api/vibe", generalRateLimiter); // Apply rate limiting to vibe routes
 console.log(
-  "[MIDDLEWARE] CORS and JSON parsing middleware applied at",
+  "[MIDDLEWARE] CORS, JSON parsing, and rate limiting middleware applied at",
   new Date().toISOString()
 );
 
@@ -107,6 +144,7 @@ const chatSchema = new mongoose.Schema({
     },
     isSaved: { type: Boolean, default: false },
   },
+  shareId: { type: String, unique: true, sparse: true },
   createdAt: { type: Date, default: Date.now },
 });
 
@@ -124,7 +162,7 @@ const activitySchema = new mongoose.Schema({
 const Activity = mongoose.model("Activity", activitySchema);
 console.log("[MODEL] Activity model defined at", new Date().toISOString());
 
-// Authentication Middleware
+// Authentication Middleware with Token Revocation Check
 const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
@@ -133,9 +171,19 @@ const authenticateToken = async (req, res, next) => {
       "[AUTH] No token provided in request headers at",
       new Date().toISOString()
     );
-    return res.status(401).json({ message: "No token provided" });
+    return res.status(401).json({ message: "Authentication required" });
   }
   try {
+    // Check if token is blacklisted
+    const isBlacklisted = await redis.get(`blacklist:${token}`);
+    if (isBlacklisted) {
+      console.error(
+        "[AUTH] Blacklisted token attempted at",
+        new Date().toISOString()
+      );
+      return res.status(403).json({ message: "Token has been revoked" });
+    }
+
     const decoded = jwt.verify(token, JWT_SECRET);
     if (!decoded.userId || !decoded.email) {
       console.error(
@@ -158,12 +206,11 @@ const authenticateToken = async (req, res, next) => {
     console.error(
       "[AUTH] Invalid token:",
       error.message,
-      "Token:",
-      token,
+      "Token: [REDACTED]",
       "at",
       new Date().toISOString()
     );
-    return res.status(403).json({ message: "Invalid token" });
+    return res.status(403).json({ message: "Invalid or expired token" });
   }
 };
 
@@ -185,7 +232,7 @@ const getSpotifyToken = async () => {
   } catch (error) {
     console.error(
       "[SPOTIFY] Error fetching token:",
-      error.response?.data || error.message,
+      error.message,
       "at",
       new Date().toISOString()
     );
@@ -193,33 +240,51 @@ const getSpotifyToken = async () => {
   }
 };
 
+// Generic Error Handler Middleware
+app.use((err, req, res, next) => {
+  console.error(
+    "[ERROR] Unhandled error:",
+    err.message,
+    "at",
+    new Date().toISOString()
+  );
+  res.status(500).json({ 
+    message: "An unexpected error occurred. Please try again later." 
+  });
+});
+
 // Routes
 app.post("/api/auth/register", async (req, res) => {
   const { name, email, password } = req.body;
-  if (!email || !password) {
+  if (!email || !password || typeof email !== "string" || typeof password !== "string") {
     console.error(
-      "[AUTH] Missing email or password at",
+      "[AUTH] Invalid input data at",
       new Date().toISOString()
     );
-    return res.status(400).json({ message: "Email and password are required" });
+    return res.status(400).json({ message: "Valid email and password are required" });
   }
+  
+  // Sanitize inputs
+  const sanitizedEmail = sanitize(email);
+  const sanitizedName = name ? sanitize(name) : undefined;
+
   try {
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findOne({ email: sanitizedEmail });
     if (existingUser) {
       console.error(
         "[AUTH] Email already exists:",
-        email,
+        sanitizedEmail,
         "at",
         new Date().toISOString()
       );
       return res.status(400).json({ message: "Email already exists" });
     }
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const user = new User({ name, email, password: hashedPassword });
+    const hashedPassword = await bcrypt.hash(password, 12); // Increased salt rounds
+    const user = new User({ name: sanitizedName, email: sanitizedEmail, password: hashedPassword });
     await user.save();
     console.log(
       "[AUTH] User registered:",
-      email,
+      sanitizedEmail,
       "at",
       new Date().toISOString()
     );
@@ -231,25 +296,29 @@ app.post("/api/auth/register", async (req, res) => {
       "at",
       new Date().toISOString()
     );
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "An error occurred during registration" });
   }
 });
 
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;
-  if (!email || !password) {
+  if (!email || !password || typeof email !== "string" || typeof password !== "string") {
     console.error(
-      "[AUTH] Missing email or password at",
+      "[AUTH] Invalid input data at",
       new Date().toISOString()
     );
-    return res.status(400).json({ message: "Email and password are required" });
+    return res.status(400).json({ message: "Valid email and password are required" });
   }
+
+  // Sanitize input
+  const sanitizedEmail = sanitize(email);
+
   try {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: sanitizedEmail });
     if (!user) {
       console.error(
         "[AUTH] User not found:",
-        email,
+        sanitizedEmail,
         "at",
         new Date().toISOString()
       );
@@ -259,7 +328,7 @@ app.post("/api/auth/login", async (req, res) => {
     if (!isMatch) {
       console.error(
         "[AUTH] Incorrect password for:",
-        email,
+        sanitizedEmail,
         "at",
         new Date().toISOString()
       );
@@ -268,11 +337,11 @@ app.post("/api/auth/login", async (req, res) => {
     const token = jwt.sign(
       { userId: user._id, email: user.email },
       JWT_SECRET,
-      { expiresIn: "1h" }
+      { expiresIn: "15m" } // Reduced expiration time
     );
     console.log(
       "[AUTH] User logged in:",
-      email,
+      sanitizedEmail,
       "at",
       new Date().toISOString()
     );
@@ -284,7 +353,31 @@ app.post("/api/auth/login", async (req, res) => {
       "at",
       new Date().toISOString()
     );
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "An error occurred during login" });
+  }
+});
+
+// New Logout Endpoint for Token Revocation
+app.post("/api/auth/logout", authenticateToken, async (req, res) => {
+  try {
+    const token = req.headers["authorization"].split(" ")[1];
+    // Add token to blacklist with expiration (matching JWT expiration)
+    await redis.set(`blacklist:${token}`, "true", "EX", 15 * 60); // 15 minutes
+    console.log(
+      "[AUTH] Token revoked for user:",
+      req.user.email,
+      "at",
+      new Date().toISOString()
+    );
+    res.json({ message: "Successfully logged out" });
+  } catch (error) {
+    console.error(
+      "[AUTH] Logout error:",
+      error.message,
+      "at",
+      new Date().toISOString()
+    );
+    res.status(500).json({ message: "An error occurred during logout" });
   }
 });
 
@@ -314,27 +407,31 @@ app.get("/api/auth/profile", authenticateToken, async (req, res) => {
       "at",
       new Date().toISOString()
     );
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "An error occurred while fetching profile" });
   }
 });
 
-// Generate Vibe
+// Generate Vibe with Enhanced Input Validation
 app.post("/api/vibe/generate", authenticateToken, async (req, res) => {
   const { input } = req.body;
-  if (!input || typeof input !== "string" || input.trim().length === 0) {
-    console.error("[VIBE] Invalid input:", input, "at", new Date().toISOString());
-    return res.status(400).json({ message: "Invalid input" });
-  }
   
+  // Enhanced input validation
+  if (!input || typeof input !== "string" || input.trim().length === 0 || input.length > 500) {
+    console.error("[VIBE] Invalid input:", input, "at", new Date().toISOString());
+    return res.status(400).json({ message: "Input must be a non-empty string (max 500 characters)" });
+  }
+
+  // Sanitize input
+  const sanitizedInput = sanitize(input.trim());
+
   try {
-    console.log("[VIBE] Processing input:", input, "at", new Date().toISOString());
+    console.log("[VIBE] Processing input:", sanitizedInput, "at", new Date().toISOString());
 
     const qlooAuthHeader = {
       "X-Api-Key": QLOO_API_KEY,
       accept: "application/json",
     };
 
-    // Step 1: Intelligent entity search with better categorization
     let contextualEntities = {
       places: [],
       brands: [],
@@ -343,26 +440,23 @@ app.post("/api/vibe/generate", authenticateToken, async (req, res) => {
     };
 
     try {
-      // Search for entities related to the input
       const searchResponse = await axios.get("https://hackathon.api.qloo.com/search", {
         headers: qlooAuthHeader,
         params: {
-          query: input,
+          query: sanitizedInput,
           limit: 10,
         },
         timeout: 15000,
       });
 
       if (searchResponse.data?.results) {
-        console.log("[QLOO] Found", searchResponse.data.results.length, "entities for:", input, "at", new Date().toISOString());
+        console.log("[QLOO] Found", searchResponse.data.results.length, "entities for:", sanitizedInput, "at", new Date().toISOString());
         
-        // Categorize entities intelligently
         searchResponse.data.results.forEach(item => {
           const entityType = item.types ? item.types[0] : "";
           const name = item.name || "";
           const id = item.entity_id || item.id;
           
-          // Filter out irrelevant entities (schools, training centers, etc.)
           const irrelevantKeywords = ['school', 'training', 'course', 'education', 'academy', 'institute'];
           const isIrrelevant = irrelevantKeywords.some(keyword => 
             name.toLowerCase().includes(keyword)
@@ -390,14 +484,11 @@ app.post("/api/vibe/generate", authenticateToken, async (req, res) => {
                    "Food:", contextualEntities.food.length, "at", new Date().toISOString());
       }
     } catch (error) {
-      console.error("[QLOO] Search failed:", error.response?.data || error.message, "at", new Date().toISOString());
+      console.error("[QLOO] Search failed:", error.message, "at", new Date().toISOString());
     }
 
-    // Step 2: Smart recommendations based on input analysis
     let relevantRecommendations = [];
-    
-    // Determine the primary intent of the input
-    const inputLower = input.toLowerCase();
+    const inputLower = sanitizedInput.toLowerCase();
     let primaryIntent = "general";
     
     if (inputLower.includes("travel") || inputLower.includes("vacation") || inputLower.includes("trip")) {
@@ -410,9 +501,8 @@ app.post("/api/vibe/generate", authenticateToken, async (req, res) => {
       primaryIntent = "shopping";
     }
 
-    console.log("[INTENT] Detected primary intent:", primaryIntent, "for input:", input, "at", new Date().toISOString());
+    console.log("[INTENT] Detected primary intent:", primaryIntent, "for input:", sanitizedInput, "at", new Date().toISOString());
 
-    // Get targeted recommendations based on intent
     try {
       const filterTypeMap = {
         travel: "urn:entity:place",
@@ -456,16 +546,14 @@ app.post("/api/vibe/generate", authenticateToken, async (req, res) => {
         }
       }
     } catch (error) {
-      console.error("[QLOO] Targeted recommendations failed:", error.response?.data || error.message, "at", new Date().toISOString());
+      console.error("[QLOO] Targeted recommendations failed:", error.message, "at", new Date().toISOString());
     }
 
-    // Step 3: AI prompt
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-pro" });
 
     let vibePrompt;
     
     if (relevantRecommendations.length > 0) {
-      // Filter and format only relevant recommendations
       const filteredRecommendations = relevantRecommendations
         .filter(rec => {
           const name = rec.name || "";
@@ -482,13 +570,13 @@ app.post("/api/vibe/generate", authenticateToken, async (req, res) => {
         return `${index + 1}. ${name} (${type})${description ? ` - ${description}` : ""}`;
       }).join("\n");
 
-      vibePrompt = `Create a compelling lifestyle vibe based on the user's request: "${input}"
+      vibePrompt = `Create a compelling lifestyle vibe based on the user's request: "${sanitizedInput}"
 
 Here are some relevant places/brands for inspiration (use selectively, don't force all):
 ${formattedRecommendations}
 
 INSTRUCTIONS:
-- Create a cohesive lifestyle experience that genuinely matches "${input}"
+- Create a cohesive lifestyle experience that genuinely matches "${sanitizedInput}"
 - Only include travel destinations that make sense for the vibe (no schools, training centers, hospitals)
 - Focus on creating an aspirational but authentic experience
 - Use the provided recommendations as inspiration, not mandatory inclusions
@@ -511,17 +599,16 @@ Return ONLY valid JSON in this exact format:
   "icons": {"music": "Music", "food": "Utensils", "fashion": "Shirt", "travel": "MapPin", "decor": "Home"}
 }`;
     } else {
-      // Fallback for when no recommendations are available
-      vibePrompt = `Create an authentic lifestyle vibe based on: "${input}"
+      vibePrompt = `Create an authentic lifestyle vibe based on: "${sanitizedInput}"
 
 Focus on creating a genuine experience that someone would actually want to have. Think about:
-- What mood does "${input}" evoke?
+- What mood does "${sanitizedInput}" evoke?
 - What activities, places, music, food would enhance this mood?
 - What would make this experience memorable and shareable?
 
 Return ONLY valid JSON in this exact format:
 {
-  "title": "A [descriptive] ${input} Experience", 
+  "title": "A [descriptive] ${sanitizedInput} Experience", 
   "mood": "[authentic mood based on input]",
   "description": "[compelling 2-3 sentence description]",
   "music": ["music genre/artist 1", "music genre/artist 2", "music genre/artist 3"],
@@ -536,12 +623,11 @@ Return ONLY valid JSON in this exact format:
 }`;
     }
 
-    console.log("[GEMINI] Sending enhanced prompt for:", input, "at", new Date().toISOString());
+    console.log("[GEMINI] Sending enhanced prompt for:", sanitizedInput, "at", new Date().toISOString());
 
     const result = await model.generateContent(vibePrompt);
     let rawResponse = result.response.text();
 
-    // Clean and parse response
     rawResponse = rawResponse.replace(/```json\n|```/g, "").trim();
     console.log("[GEMINI] Raw response length:", rawResponse.length, "at", new Date().toISOString());
     
@@ -549,12 +635,10 @@ Return ONLY valid JSON in this exact format:
     try {
       vibeData = JSON.parse(rawResponse);
       
-      // Validate and enhance the response
-      vibeData.title = vibeData.title || `A ${input} Experience`;
+      vibeData.title = vibeData.title || `A ${sanitizedInput} Experience`;
       vibeData.mood = vibeData.mood || "Inspired";
-      vibeData.description = vibeData.description || `An experience centered around ${input}.`;
+      vibeData.description = vibeData.description || `An experience centered around ${sanitizedInput}.`;
       
-      // Ensure arrays have at least 3 items
       ['music', 'food', 'fashion', 'travel', 'decor'].forEach(category => {
         if (!Array.isArray(vibeData[category]) || vibeData[category].length < 3) {
           vibeData[category] = vibeData[category] || [];
@@ -566,10 +650,9 @@ Return ONLY valid JSON in this exact format:
       
     } catch (parseError) {
       console.error("[GEMINI] JSON parsing failed:", parseError.message, "at", new Date().toISOString());
-      return res.status(500).json({ message: "Failed to parse AI response. Please try again." });
+      return res.status(500).json({ message: "Failed to process AI response" });
     }
 
-    // Fetch Unsplash images with better search terms
     let imageUrls = [];
     const defaultImageUrls = [
       "https://images.unsplash.com/photo-1497515114629-f71d767d0461",
@@ -578,8 +661,7 @@ Return ONLY valid JSON in this exact format:
     ];
 
     try {
-      // Use mood and input for better image search
-      const imageSearchQuery = `${vibeData.mood} ${input}`.trim();
+      const imageSearchQuery = `${vibeData.mood} ${sanitizedInput}`.trim();
       const unsplashResponse = await axios.get("https://api.unsplash.com/search/photos", {
         headers: { Authorization: `Client-ID ${UNSPLASH_API_KEY}` },
         params: { 
@@ -604,11 +686,10 @@ Return ONLY valid JSON in this exact format:
       imageUrls = defaultImageUrls;
     }
 
-    // Fetch Spotify tracks with better search
     let spotifyTracks = [];
     try {
       const spotifyToken = await getSpotifyToken();
-      const musicQuery = vibeData.music[0] || vibeData.mood || input;
+      const musicQuery = vibeData.music[0] || vibeData.mood || sanitizedInput;
       const spotifyResponse = await axios.get("https://api.spotify.com/v1/search", {
         headers: { Authorization: `Bearer ${spotifyToken}` },
         params: { q: musicQuery, type: "track", limit: 3, market: "US" },
@@ -628,7 +709,6 @@ Return ONLY valid JSON in this exact format:
       console.error("[SPOTIFY] Track fetch failed:", error.message, "at", new Date().toISOString());
     }
 
-    // Validate colors
     const colors = Array.isArray(vibeData.colors) && vibeData.colors.length >= 3
       ? vibeData.colors.slice(0, 3).map((color) => 
           /^#[0-9A-Fa-f]{6}$/.test(color) ? color : "#" + Math.floor(Math.random()*16777215).toString(16).padStart(6, '0'))
@@ -638,10 +718,9 @@ Return ONLY valid JSON in this exact format:
       ? vibeData.categories 
       : [primaryIntent === "general" ? "lifestyle" : primaryIntent];
 
-    // Save to database
     const newChat = new Chat({
       userId: req.user.userId,
-      messages: [{ role: "user", content: input }],
+      messages: [{ role: "user", content: sanitizedInput }],
       vibe: {
         title: vibeData.title,
         mood: vibeData.mood,
@@ -649,7 +728,7 @@ Return ONLY valid JSON in this exact format:
         music: vibeData.music,
         food: vibeData.food,
         fashion: vibeData.fashion,
-        travel: vibeData.travel,
+        travel: viberavel,
         decor: vibeData.decor,
         colors,
         imageUrls,
@@ -671,15 +750,14 @@ Return ONLY valid JSON in this exact format:
       vibe: { title: vibeData.title } 
     }).save();
     
-    console.log("[SUCCESS] Vibe generated successfully for:", input, "chatId:", newChat._id, "at", new Date().toISOString());
+    console.log("[SUCCESS] Vibe generated successfully for:", sanitizedInput, "chatId:", newChat._id, "at", new Date().toISOString());
     
     res.json({ ...newChat.vibe, chatId: newChat._id });
     
   } catch (error) {
-    console.error("[ERROR] Vibe generation failed:", error.message, "Input:", input, "at", new Date().toISOString());
+    console.error("[ERROR] Vibe generation failed:", error.message, "Input:", sanitizedInput, "at", new Date().toISOString());
     res.status(500).json({ 
-      message: "Failed to generate vibe. Please try again.", 
-      error: process.env.NODE_ENV === 'development' ? error.message : undefined 
+      message: "Failed to generate vibe"
     });
   }
 });
@@ -741,6 +819,50 @@ app.post("/api/vibe/save/:chatId", authenticateToken, async (req, res) => {
       new Date().toISOString()
     );
     res.status(500).json({ message: "Failed to save vibe" });
+  }
+});
+
+app.post("/api/vibe/share/:chatId", authenticateToken, async (req, res) => {
+  try {
+    const chat = await Chat.findOne({
+      _id: req.params.chatId,
+      userId: req.user.userId,
+    });
+
+    if (!chat) {
+      return res.status(404).json({ message: "Chat not found" });
+    }
+
+    if (!chat.vibe.isSaved) {
+      return res.status(400).json({ message: "Only saved vibes can be shared" });
+    }
+
+    if (!chat.shareId) {
+      chat.shareId = crypto.randomBytes(16).toString("hex");
+      await chat.save();
+    }
+
+    const shareLink = `${FRONTEND_URL}/dashboard?shareId=${chat.shareId}`;
+    res.json({ shareLink });
+  } catch (error) {
+    console.error("[SHARE] Error creating share link:", error.message, "at", new Date().toISOString());
+    res.status(500).json({ message: "Failed to create share link" });
+  }
+});
+
+app.get("/api/vibe/shared/:shareId", async (req, res) => {
+  try {
+    const chat = await Chat.findOne({ shareId: req.params.shareId });
+
+    if (!chat || !chat.vibe.isSaved) {
+      return res.status(404).json({ message: "Shared vibe not found or is no longer available" });
+    }
+    
+    res.json(chat);
+
+  } catch (error) {
+    console.error("[SHARE] Error fetching shared vibe:", error.message, "at", new Date().toISOString());
+    res.status(500).json({ message: "Failed to fetch shared vibe" });
   }
 });
 
@@ -813,9 +935,7 @@ app.post("/api/vibe/tts/:chatId", authenticateToken, async (req, res) => {
       "at",
       new Date().toISOString()
     );
-    res
-      .status(500)
-      .json({ message: `Failed to generate TTS: ${error.message}` });
+    res.status(500).json({ message: "Failed to generate audio content" });
   }
 });
 
