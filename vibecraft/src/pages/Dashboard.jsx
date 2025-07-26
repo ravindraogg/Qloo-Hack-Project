@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import debounce from 'lodash.debounce';
 import DOMPurify from 'dompurify';
+import FlyingBird from '../components/FlyingBird';
 
 
 // --- Global Helper Functions & Components ---
@@ -1016,8 +1017,11 @@ const Dashboard = () => {
     }
 
     if ('speechSynthesis' in window) speechSynthesisRef.current = window.speechSynthesis;
+    
     const hasSeenTutorial = localStorage.getItem('hasSeenTutorial');
-    if (!hasSeenTutorial) setShowTutorial(true);
+    if (!hasSeenTutorial) {
+      setShowTutorial(true);
+    }
 
     return () => {
       window.removeEventListener('online', handleOnline);
@@ -1110,6 +1114,8 @@ const Dashboard = () => {
   return (
     <ErrorBoundary>
       <div className={`min-h-screen bg-black ${mainTextColorClass} font-sans`} style={{ background: backgroundGradient }}>
+        <FlyingBird />
+
         <audio ref={audioRef} />
         <div className="fixed top-4 right-4 z-50 space-y-2 max-w-sm w-full">
           {notifications.map(notification => (
