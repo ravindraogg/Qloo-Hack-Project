@@ -84,7 +84,7 @@ const LandingPage = () => {
   const features = [
     {
       icon: Music,
-      title: "AI Music Curation",
+      title: "AI Music Suggestio",
       desc: "Personalized playlists that evolve with your taste",
       color: "from-purple-500 to-pink-500",
       bgGlow: "bg-purple-500/20",
@@ -240,7 +240,7 @@ const LandingPage = () => {
             <>
               <img
                 src={vibe.imageUrls[0]}
- synapse                alt={`${vibe.title}`}
+                alt={`${vibe.title}`}
                 className="w-full h-56 object-cover group-hover:scale-110 transition-transform duration-700"
                 onError={(e) =>
                   (e.target.src =

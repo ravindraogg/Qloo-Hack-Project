@@ -437,14 +437,19 @@ const Dashboard = () => {
     { id: 'mood', name: 'Mood Board', icon: Palette, color: 'from-violet-500 to-purple-500' }
   ];
 
-  const quickPrompts = [
-    "I love indie films and vinyl records",
-    "Cozy rainy day vibes",
-    "90s nostalgic feelings",
-    "Minimalist and clean aesthetic",
-    "Bohemian adventure spirit",
-    "Dark academia mood"
-  ];
+const quickPrompts = [
+  "Late night deep talks and lo-fi music",
+  "Sunsets and slow walks",
+  "Books, coffee, and peace",
+  "Dancing like no one’s watching",
+  "Rainy days and cozy playlists",
+  "Vintage vibes and film cameras",
+  "Adventure without a plan",
+  "Stargazing and thinking too much",
+  "Minimal spaces, maximum peace",
+  "Memes, comfort shows, and chill weekends"
+];
+
 
   const defaultImage = "https://images.unsplash.com/photo-1511920183276-5942f28b870d?w=800&h=600&fit=crop";
   
