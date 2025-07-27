@@ -11,7 +11,6 @@ import { useState, useEffect } from "react";
 function App() {
   const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
 
-  // Lottie animation setup for Pets (mouse follower)
   const petsOptions = {
     animationData: Pets,
     loop: true,
@@ -49,7 +48,6 @@ function App() {
   return (
     <Router>
       <div className="min-h-screen bg-gray-100 relative">
-        {/* Pets animation to the right of mouse pointer */}
         <div
           className="absolute pointer-events-none"
           style={{

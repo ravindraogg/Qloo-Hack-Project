@@ -32,7 +32,7 @@ const VibeCraftAuth = () => {
     setError('');
 
     try {
-      const url = isLogin ? 'http://localhost:5000/api/auth/login' : 'http://localhost:5000/api/auth/register';
+      const url = isLogin ? `${base}api/auth/login` : `${base}api/auth/register`;
       const response = await fetch(url, {
         method: 'POST',
         headers: {

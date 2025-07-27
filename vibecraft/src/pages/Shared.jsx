@@ -4,8 +4,7 @@ import {
   Sparkles, Music, MapPin, Palette, Utensils, Shirt, Sofa, Loader2, X, Play, Pause, ChevronLeft, ChevronRight, AlertCircle, CheckCircle, Info, ZapOff
 } from 'lucide-react';
 import DOMPurify from 'dompurify';
-
-// --- Global Helper Functions ---
+const base = import.meta.env.VITE_BACKEND_URL;
 
 const sanitizeInput = (input) => {
   if (!input || typeof input !== 'string') return '';
@@ -317,7 +316,7 @@ const Shared = () => {
     }
     setIsLoading(true);
     try {
-      const response = await fetch(`http://localhost:5000/api/vibe/shared/${sanitizeInput(id)}`, {
+      const response = await fetch(`${base}api/vibe/shared/${sanitizeInput(id)}`, {
         signal: AbortSignal.timeout(15000),
       });
       if (!response.ok) {

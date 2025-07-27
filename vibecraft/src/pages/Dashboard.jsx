@@ -5,9 +5,8 @@ import {
 import debounce from 'lodash.debounce';
 import DOMPurify from 'dompurify';
 import FlyingBird from '../components/FlyingBird';
+const base = import.meta.env.VITE_BACKEND_URL;
 
-
-// --- Global Helper Functions & Components ---
 
 const sanitizeInput = (input) => {
     if (!input || typeof input !== 'string') return '';
@@ -578,7 +577,7 @@ const quickPrompts = [
     const token = localStorage.getItem('token');
     if (!token) return;
     try {
-      const response = await fetch('http://localhost:5000/api/chats', {
+      const response = await fetch(`${base}api/chats`, {
         headers: { 'Authorization': `Bearer ${token}` },
         signal: AbortSignal.timeout(10000),
       });
@@ -616,7 +615,7 @@ const quickPrompts = [
     const token = localStorage.getItem('token');
     if (!token) return;
     try {
-      const response = await fetch('http://localhost:5000/api/activity', { headers: { 'Authorization': `Bearer ${token}` } });
+      const response = await fetch(`${base}api/activity`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (!response.ok) throw new Error('Failed to fetch recent activity');
       const activities = await response.json();
       setRecentActivity(activities.map(activity => ({
@@ -682,7 +681,7 @@ const quickPrompts = [
         return;
       }
 
-      const response = await fetch('http://localhost:5000/api/vibe/generate', {
+      const response = await fetch(`${base}api/vibe/generate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -754,7 +753,7 @@ const quickPrompts = [
         return;
       }
       try {
-        const response = await fetch(`http://localhost:5000/api/vibe/save/${chatId}`, {
+        const response = await fetch(`${base}api/vibe/save/${chatId}`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` },
         });
@@ -793,7 +792,7 @@ const quickPrompts = [
         return;
       }
       try {
-        const response = await fetch(`http://localhost:5000/api/vibe/tts/${chatId}`, {
+        const response = await fetch(`${base}api/vibe/tts/${chatId}`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
         });
@@ -838,7 +837,7 @@ const quickPrompts = [
         return;
       }
       try {
-        const response = await fetch(`http://localhost:5000/api/vibe/share/${chatId}`, {
+        const response = await fetch(`${base}api/vibe/share/${chatId}`, {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` },
         });
@@ -915,7 +914,7 @@ const quickPrompts = [
         return;
       }
       try {
-        const response = await fetch(`http://localhost:5000/api/vibe/shared/${sanitizeInput(shareId)}`, {
+        const response = await fetch(`${base}api/vibe/shared/${sanitizeInput(shareId)}`, {
           signal: AbortSignal.timeout(10000),
         });
         console.log('loadSharedVibe response status:', response.status);
@@ -962,7 +961,7 @@ const quickPrompts = [
       }
       if (token) {
         try {
-          const response = await fetch('http://localhost:5000/api/auth/profile', {
+          const response = await fetch(`${base}api/auth/profile`, {
             headers: { 'Authorization': `Bearer ${token}` },
           });
           if (response.ok) {
