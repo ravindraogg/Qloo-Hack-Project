@@ -1,7 +1,0 @@
-{
-  "dependencies": {
-    "express-rate-limit": "^8.0.1",
-    "ioredis": "^5.6.1",
-    "mongo-sanitize": "^1.1.0"
-  }
-}
