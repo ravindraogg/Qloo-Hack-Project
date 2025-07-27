@@ -1,13 +1,14 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App.jsx';
-import './index.css'; // Make sure your main CSS is imported
-import { LenisProvider } from './LenisContext.jsx'; // Import the provider
-
+import './index.css'; 
+import { LenisProvider } from './LenisContext.jsx';
+import { Analytics } from "@vercel/analytics/next"
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
     <LenisProvider>
       <App />
     </LenisProvider>
+    <Analytics/>
   </React.StrictMode>,
 );
