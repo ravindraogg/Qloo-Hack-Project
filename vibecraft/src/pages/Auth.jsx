@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, Mail, Lock, User, Sparkles, ArrowRight, Palette, Music, MapPin, Coffee, Star, Shield } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
+const base = import.meta.env.VITE_BACKEND_URL;
 
 const VibeCraftAuth = () => {
   const [isLogin, setIsLogin] = useState(true);
