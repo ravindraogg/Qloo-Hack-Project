@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useLottie } from "lottie-react";
-import MainScene from "../components/MainScene.json";
-import Pets from "../components/pets.json";
+import MainScene1 from "../components/MainScene.json";
 import {
   ChevronRight,
   Sparkles,
@@ -32,6 +31,7 @@ import {
 import { Link } from "react-router-dom";
 
 const LandingPage = () => {
+  const MainScene = MainScene1; 
   const [currentFeature, setCurrentFeature] = useState(0);
   const [isVisible, setIsVisible] = useState({});
   const [chatExpanded, setChatExpanded] = useState(false);
@@ -48,16 +48,6 @@ const LandingPage = () => {
     autoplay: true,
   };
   const { View: MainSceneView } = useLottie(mainSceneOptions);
-
-  // Lottie animation setup for Pets (mouse follower)
-  const petsOptions = {
-    animationData: Pets,
-    loop: true,
-    autoplay: true,
-  };
-  const { View: PetsView } = useLottie(petsOptions);
-
-  // Dynamic favicon functionality
   useEffect(() => {
     const createFavicon = () => {
       const canvas = document.createElement("canvas");
@@ -65,7 +55,6 @@ const LandingPage = () => {
       canvas.width = 32;
       canvas.height = 32;
 
-      // Create gradient background
       const gradient = ctx.createLinearGradient(0, 0, 32, 32);
       gradient.addColorStop(0, "#ec4899"); // pink-500
       gradient.addColorStop(1, "#8b5cf6"); // violet-500
@@ -92,20 +81,6 @@ const LandingPage = () => {
 
     createFavicon();
   }, []);
-
-  // Mouse tracking for parallax effects and Pets animation
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      setMousePosition({
-        x: e.clientX,
-        y: e.clientY,
-      });
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
-  }, []);
-
   const features = [
     {
       icon: Music,
@@ -265,7 +240,7 @@ const LandingPage = () => {
             <>
               <img
                 src={vibe.imageUrls[0]}
-                alt={`${vibe.title}`}
+ synapse                alt={`${vibe.title}`}
                 className="w-full h-56 object-cover group-hover:scale-110 transition-transform duration-700"
                 onError={(e) =>
                   (e.target.src =
@@ -275,7 +250,7 @@ const LandingPage = () => {
               <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent"></div>
             </>
           )}
-          <div className="absolute top-4 right-4">
+          <div className="absolute/extreme top-4 right-4">
             <div className="flex items-center space-x-1 bg-black/50 backdrop-blur-sm rounded-full px-3 py-1">
               <Star className="w-4 h-4 text-yellow-400" />
               <span className="text-white text-sm font-medium">Generated</span>
@@ -439,19 +414,18 @@ const LandingPage = () => {
             <div className="w-1 h-1 bg-white/20 rounded-full"></div>
           </div>
         ))}
-        {/* Pets animation to the right of mouse pointer */}
+        {/* MainScene animation aligned to right side */}
         <div
           className="absolute pointer-events-none"
           style={{
-            left: `${mousePosition.x + 20}px`, // Move more right (increased from 24 to 32)
-            top: `${mousePosition.y - 17}px`, // Move slightly up (added -16 offset)
-            transform: "translateY(-50%) rotate(45deg)",
-            width: "24px",
-            height: "24px",
+            right: "20px",
+            top: "100px",
+            width: "500px",
+            height: "500px",
             zIndex: 1000,
           }}
         >
-          {PetsView}
+          {MainSceneView}
         </div>
       </div>
 
@@ -639,13 +613,6 @@ const LandingPage = () => {
               <div className="absolute inset-0 bg-gradient-to-r from-pink-500 to-violet-500 rounded-full animate-pulse-glow"></div>
               <div className="relative w-32 h-32 bg-gradient-to-r from-pink-500 to-violet-500 rounded-full flex items-center justify-center shadow-2xl">
                 <Sparkles className="w-16 h-16 animate-sparkle" />
-                {/* MainScene Lottie Animation */}
-                <div
-                  className="absolute "
-                  style={{ top: "80px", left: "10px" }}
-                >
-                  {MainSceneView}
-                </div>
               </div>
             </div>
           </div>
@@ -1000,10 +967,11 @@ const LandingPage = () => {
           )}
         </div>
       </section>
-      <footer className="py-16 border-t border-white/10 bg-black/20 backdrop-blur-sm">
+      <footer className="py-10 border-t border-white/10 bg-black/20 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row justify-between items-center mb-12">
-            <div className="flex items-center space-x-4 mb-8 md:mb-0">
+          <div className="flex flex-col md:flex-row items-center justify-center gap-[100px]">
+            {/* Left: Branding */}
+            <div className="flex items-center space-x-7">
               <div className="relative group">
                 <div className="w-12 h-12 bg-gradient-to-r from-pink-500 to-violet-500 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform shadow-lg">
                   <Sparkles className="w-7 h-7 group-hover:rotate-12 transition-transform" />
@@ -1018,53 +986,26 @@ const LandingPage = () => {
               </div>
             </div>
 
-            <div className="flex space-x-8 text-gray-400">
-              <a
-                href="#"
-                className="hover:text-pink-400 transition-colors font-medium"
-              >
-                Privacy Policy
-              </a>
-              <a
-                href="#"
-                className="hover:text-pink-400 transition-colors font-medium"
-              >
-                Terms of Service
-              </a>
-              <a
-                href="#"
-                className="hover:text-pink-400 transition-colors font-medium"
-              >
-                Support Center
-              </a>
-              <a
-                href="#"
-                className="hover:text-pink-400 transition-colors font-medium"
-              >
-                API Access
-              </a>
+            {/* Right: Text */}
+            <div className="text-center md:text-left space-y-1">
+              <p className="text-gray-400 text-sm">
+                © {new Date().getFullYear()} VibeCraft. Crafted by{" "}
+                <span className="text-pink-400 font-semibold">Ravindra</span>.
+                Powered by{" "}
+                <span className="text-violet-400 font-semibold">
+                  Qloo Taste AI
+                </span>{" "}
+                &{" "}
+                <span className="text-blue-400 font-semibold">
+                  Google Gemini
+                </span>
+                .
+              </p>
+              <p className="text-gray-500 text-xs">
+                Transforming individual taste into personalized lifestyle
+                experiences through intelligent curation.
+              </p>
             </div>
-          </div>
-
-          <div className="pt-8 border-t border-white/10 text-center">
-            <p className="text-gray-400 text-lg">
-              © {new Date().getFullYear()} VibeCraft. Crafted by{" "}
-              <span className="text-pink-400 font-semibold">Ravindra</span>.{" "}
-              Powered by{" "}
-              <span className="text-violet-400 font-semibold">
-                Qloo Taste AI
-              </span>{" "}
-              &
-              <span className="text-blue-400 font-semibold">
-                {" "}
-                Google Gemini
-              </span>
-              .
-            </p>
-            <p className="text-gray-500 text-sm mt-2">
-              Transforming individual taste into personalized lifestyle
-              experiences through intelligent curation.
-            </p>
           </div>
         </div>
       </footer>

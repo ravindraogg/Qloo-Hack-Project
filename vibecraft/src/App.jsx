@@ -1,13 +1,54 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { useLottie } from "lottie-react";
+import Pets from "./components/pets.json";
 import Home from "./pages/LandingPage";
 import Auth from "./pages/Auth";
-import "./App.css";
 import Dashboard from "./pages/Dashboard";
 import Shared from "./pages/Shared";
+import "./App.css";
+import { useState, useEffect } from "react";
+
 function App() {
+  const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
+
+  // Lottie animation setup for Pets (mouse follower)
+  const petsOptions = {
+    animationData: Pets,
+    loop: true,
+    autoplay: true,
+  };
+  const { View: PetsView } = useLottie(petsOptions);
+
+  // Mouse tracking for Pets animation
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      setMousePosition({
+        x: e.clientX,
+        y: e.clientY,
+      });
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, []);
+
   return (
     <Router>
-      <div className="min-h-screen bg-gray-100">
+      <div className="min-h-screen bg-gray-100 relative">
+        {/* Pets animation to the right of mouse pointer */}
+        <div
+          className="absolute pointer-events-none"
+          style={{
+            left: `${mousePosition.x + 20}px`,
+            top: `${mousePosition.y - 17}px`,
+            transform: "translateY(-50%) rotate(45deg)",
+            width: "24px",
+            height: "24px",
+            zIndex: 1000,
+          }}
+        >
+          {PetsView}
+        </div>
         <Routes>
           <Route path="/" element={<Home />} />
           <Route path="/auth" element={<Auth />} />
