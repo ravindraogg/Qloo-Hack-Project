@@ -19,8 +19,7 @@ const UNSPLASH_API_KEY = process.env.UNSPLASH_API_KEY;
 const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET;
 const PORT = process.env.PORT || 5000;
-const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000"; // Added for constructing share links
-
+const FRONTEND_URL = process.env.FRONTEND_URL;
 if (
   !GEMINI_API_KEY ||
   !QLOO_API_KEY ||
@@ -45,7 +44,10 @@ console.log(
 
 const app = express();
 
-app.use(cors());
+app.use(cors({
+  origin: FRONTEND_URL,
+  credentials: true,
+}));
 app.use(express.json());
 console.log(
   "[MIDDLEWARE] CORS and JSON parsing middleware applied at",

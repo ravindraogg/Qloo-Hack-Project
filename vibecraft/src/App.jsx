@@ -19,17 +19,31 @@ function App() {
   };
   const { View: PetsView } = useLottie(petsOptions);
 
-  // Mouse tracking for Pets animation
   useEffect(() => {
+    let lastMouse = { x: 0, y: 0 };
+
     const handleMouseMove = (e) => {
+      lastMouse = { x: e.clientX, y: e.clientY };
       setMousePosition({
-        x: e.clientX,
-        y: e.clientY,
+        x: e.clientX + window.scrollX,
+        y: e.clientY + window.scrollY,
+      });
+    };
+
+    const handleScroll = () => {
+      setMousePosition({
+        x: lastMouse.x + window.scrollX,
+        y: lastMouse.y + window.scrollY,
       });
     };
 
     window.addEventListener("mousemove", handleMouseMove);
-    return () => window.removeEventListener("mousemove", handleMouseMove);
+    window.addEventListener("scroll", handleScroll);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("scroll", handleScroll);
+    };
   }, []);
 
   return (
