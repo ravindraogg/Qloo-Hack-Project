@@ -764,8 +764,7 @@ app.post("/api/vibe/share/:chatId", authenticateToken, async (req, res) => {
       chat.shareId = crypto.randomBytes(16).toString("hex");
       await chat.save();
     }
-    // CORRECTED: Changed the URL structure to match the frontend route /shared/:sharedId
-    const shareLink = `${FRONTEND_URL}/shared/${chat.shareId}`;
+    const shareLink = `https://vibecraft-qloohack.netlify.app/shared/${chat.shareId}`;
     res.json({ shareLink });
   } catch (error) {
     console.error("[SHARE] Error creating share link:", error.message);
