@@ -45,7 +45,7 @@ console.log(
 const app = express();
 
 app.use(cors({
-  origin: FRONTEND_URL,
+  origin: 'https://vibecraft-qloohack.netlify.app',
   credentials: true,
 }));
 app.use(express.json());
