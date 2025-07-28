@@ -201,42 +201,60 @@ const getSpotifyToken = async () => {
 // Routes
 app.post("/api/auth/register", async (req, res) => {
   const { name, email, password } = req.body;
+
+  // Basic validation
   if (!email || !password) {
     console.error(
-      "[AUTH] Missing email or password at",
+      "[AUTH] Register attempt with missing email or password at",
       new Date().toISOString()
     );
     return res.status(400).json({ message: "Email and password are required" });
   }
+
   try {
+    // Check if user already exists
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       console.error(
-        "[AUTH] Email already exists:",
+        "[AUTH] Registration failed: Email already exists:",
         email,
         "at",
         new Date().toISOString()
       );
       return res.status(400).json({ message: "Email already exists" });
     }
+
+    // Hash the password and create a new user
     const hashedPassword = await bcrypt.hash(password, 10);
     const user = new User({ name, email, password: hashedPassword });
     await user.save();
+
     console.log(
-      "[AUTH] User registered:",
+      "[AUTH] User registered successfully:",
       email,
       "at",
       new Date().toISOString()
     );
-    res.status(201).json({ message: "User registered successfully" });
+    const token = jwt.sign(
+      { userId: user._id, email: user.email },
+      JWT_SECRET,
+      { expiresIn: "1h" } // Or your preferred expiration time
+    );
+
+    res.status(201).json({
+      token,
+      user: { name: user.name, email: user.email },
+      message: "User registered successfully",
+    });
+
   } catch (error) {
     console.error(
-      "[AUTH] Registration error:",
+      "[AUTH] Registration server error:",
       error.message,
       "at",
       new Date().toISOString()
     );
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: "Server error during registration" });
   }
 });
 

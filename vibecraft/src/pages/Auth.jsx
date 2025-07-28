@@ -27,47 +27,52 @@ const VibeCraftAuth = () => {
     setError(''); 
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  setLoading(true);
+  setError('');
 
-    try {
-      const url = isLogin ? `${base}api/auth/login` : `${base}api/auth/register`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: formData.name,
-          email: formData.email,
-          password: formData.password,
-          confirmPassword: formData.confirmPassword,
-        }),
+  if (!isLogin && formData.password !== formData.confirmPassword) {
+    setError('Passwords do not match. Please try again.');
+    setLoading(false);
+    return; 
+  }
+  try {
+    const url = isLogin ? `${base}api/auth/login` : `${base}api/auth/register`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        name: formData.name,
+        email: formData.email,
+        password: formData.password,
+        confirmPassword: formData.confirmPassword, 
+      }),
+    });
+
+    const data = await response.json();
+
+    if (response.ok) {
+      localStorage.setItem('token', data.token);
+      setFormData({
+        name: '',
+        email: '',
+        password: '',
+        confirmPassword: '',
+        agreeTerms: false,
       });
-
-      const data = await response.json();
-
-      if (response.ok) {
-        localStorage.setItem('token', data.token);
-        setFormData({
-          name: '',
-          email: '',
-          password: '',
-          confirmPassword: '',
-          agreeTerms: false,
-        });
-        navigate('/dashboard');
-      } else {
-        setError(data.message || 'An error occurred');
-      }
-    } catch (err) {
-      setError('Network error. Please try again later.');
-    } finally {
-      setLoading(false);
+      navigate('/dashboard');
+    } else {
+      setError(data.message || 'An error occurred');
     }
-  };
+  } catch (err) {
+    setError('Network error. Please try again later.');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const socialProviders = [
     { name: 'Google', icon: '🎵', color: 'from-red-500 to-orange-500' },
