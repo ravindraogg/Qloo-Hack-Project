@@ -44,16 +44,10 @@ console.log(
 
 const app = express();
 
-const corsOptions = {
-  origin: 'https://vibecraft-qloohack.netlify.app',
+app.use(cors({
+  origin: FRONTEND_URL,
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-};
-
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions))
-
+}));
 app.use(express.json());
 console.log(
   "[MIDDLEWARE] CORS and JSON parsing middleware applied at",
@@ -764,7 +758,8 @@ app.post("/api/vibe/share/:chatId", authenticateToken, async (req, res) => {
       chat.shareId = crypto.randomBytes(16).toString("hex");
       await chat.save();
     }
-    const shareLink = `https://vibecraft-qloohack.netlify.app/shared/${chat.shareId}`;
+    // CORRECTED: Changed the URL structure to match the frontend route /shared/:sharedId
+    const shareLink = `${FRONTEND_URL}/shared/${chat.shareId}`;
     res.json({ shareLink });
   } catch (error) {
     console.error("[SHARE] Error creating share link:", error.message);
