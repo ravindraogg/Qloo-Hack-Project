@@ -1,0 +1,66 @@
+trigger:
+- main
+
+variables:
+  azureSubscription: 'a2cad72b-815d-4c32-a0d4-7640e23c2930'
+  webAppName: 'vibecraftqloohapp'
+  environmentName: 'vibecraftqloohapp'
+  vmImageName: 'ubuntu-latest'
+
+stages:
+- stage: Build
+  displayName: Build stage
+  jobs:
+  - job: Build
+    displayName: Build
+    pool:
+      vmImage: $(vmImageName)
+
+    steps:
+    - task: NodeTool@0
+      inputs:
+        versionSpec: '20.x'
+      displayName: 'Install Node.js'
+
+    - script: |
+        cd $(Build.SourcesDirectory)
+        npm install
+      workingDirectory: $(Build.SourcesDirectory)
+      displayName: 'Install backend dependencies'
+
+    - task: ArchiveFiles@2
+      displayName: 'Archive backend files'
+      inputs:
+        rootFolderOrFile: '$(Build.SourcesDirectory)'
+        includeRootFolder: false
+        archiveType: zip
+        archiveFile: '$(Build.ArtifactStagingDirectory)/backend.zip'
+        replaceExistingArchive: true
+
+    - upload: '$(Build.ArtifactStagingDirectory)/backend.zip'
+      artifact: drop
+
+- stage: Deploy
+  displayName: Deploy stage
+  dependsOn: Build
+  condition: succeeded()
+  jobs:
+  - deployment: Deploy
+    displayName: Deploy to Azure Web App
+    environment: $(environmentName)
+    pool:
+      vmImage: $(vmImageName)
+    strategy:
+      runOnce:
+        deploy:
+          steps:
+          - task: AzureWebApp@1
+            displayName: 'Azure Web App Deploy: $(webAppName)'
+            inputs:
+              azureSubscription: $(azureSubscription)
+              appType: webAppLinux
+              appName: $(webAppName)
+              runtimeStack: 'NODE|20-lts'
+
+              package: $(Pipeline.Workspace)/drop/backend.zip
+              startUpCommand: 'node server.js'  # or 'npm start' if your package.json defines a start script
