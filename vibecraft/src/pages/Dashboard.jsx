@@ -47,6 +47,42 @@ const getThemeBrightness = (colors) => {
     }
 };
 
+const ErrorBoundary = ({ children }) => {
+  const [hasError, setHasError] = useState(false);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    const handleError = (event) => {
+      setHasError(true);
+      setError(event.error || new Error('Unknown error'));
+    };
+    window.addEventListener('error', handleError);
+    return () => window.removeEventListener('error', handleError);
+  }, []);
+
+  if (hasError) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 mx-auto text-red-500 mb-4" />
+          <h2 className="text-2xl font-bold">Something Went Wrong</h2>
+          <p className="mt-2">Error: {error?.message || 'Unknown error'}</p>
+          <button
+            onClick={() => {
+              setHasError(false);
+              setError(null);
+            }}
+            className="mt-4 px-4 py-2 bg-blue-500 rounded-full"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+  return children;
+};
+
 const SpotifyPlayer = React.memo(({ trackId, trackName }) => {
     if (!trackId) {
       return <div className="w-full h-20 bg-gray-800/50 rounded-lg flex items-center justify-center text-gray-400 text-sm">No track available</div>;
