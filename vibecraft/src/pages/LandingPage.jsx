@@ -84,7 +84,7 @@ const LandingPage = () => {
   const features = [
     {
       icon: Music,
-      title: "AI Music Suggestio",
+      title: "AI Music Suggestion",
       desc: "Personalized playlists that evolve with your taste",
       color: "from-purple-500 to-pink-500",
       bgGlow: "bg-purple-500/20",
