@@ -185,7 +185,7 @@ const VibeCard = React.memo(
         <div className="p-6 flex-1 flex flex-col">
           {vibe.spotifyTracks && vibe.spotifyTracks.length > 0 && (
             <div className="mb-4">
-              <h4 className={`text-sm font-semibold ${semiBoldTextColorClass} mb-2`}>Soundtrack</h4>
+              <h4 className={`text-sm font-semibold ${semiBoldTextColorClass} mb-2`}>Spotify Music</h4>
               <div className="relative w-full h-20 overflow-hidden">
                   <SpotifyPlayer 
                     trackId={vibe.spotifyTracks[0].id} 
